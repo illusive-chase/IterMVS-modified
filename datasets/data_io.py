@@ -3,7 +3,7 @@ import re
 import sys
 
 
-def read_pfm(filename):
+def read_pfm(filename, flip=True):
     # rb: binary file and read only
     file = open(filename, 'rb')
     color = None
@@ -37,7 +37,8 @@ def read_pfm(filename):
     shape = (height, width, 3) if color else (height, width, 1)
     # depth: H*W
     data = np.reshape(data, shape)
-    data = np.flipud(data)
+    if flip:
+        data = np.flipud(data)
     file.close()
     return data, scale
 

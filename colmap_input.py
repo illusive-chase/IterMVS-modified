@@ -336,7 +336,7 @@ if __name__ == "__main__":
     def calc_score(ind1: int, ind2: int) -> float:
         id_i = images[ind1].point3d_ids
         id_j = images[ind2].point3d_ids
-        id_intersect = [it for it in id_i if it in id_j]
+        id_intersect = set(id_i) & set(id_j)
         cam_center_i = -np.matmul(extrinsic[ind1][:3, :3].transpose(), extrinsic[ind1][:3, 3:4])[:, 0]
         cam_center_j = -np.matmul(extrinsic[ind2][:3, :3].transpose(), extrinsic[ind2][:3, 3:4])[:, 0]
         view_score_ = 0.0
@@ -353,15 +353,12 @@ if __name__ == "__main__":
 
     # view selection
     score = np.zeros((num_images, num_images))
-    queue: List[Tuple[int, int]] = []
+    
     for i in range(num_images):
         for j in range(i + 1, num_images):
-            queue.append((i, j))
-
-    for i, j in queue:
-        s = calc_score(i, j)
-        score[i, j] = s
-        score[j, i] = s
+            s = calc_score(i, j)
+            score[i, j] = s
+            score[j, i] = s
 
     if args.num_src_images < 0:
         args.num_src_images = num_images
