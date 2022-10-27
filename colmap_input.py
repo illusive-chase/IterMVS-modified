@@ -248,9 +248,8 @@ def quaternion_to_rotation_matrix(qvec: List[float]) -> np.ndarray:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert colmap results into input for PatchmatchNet")
 
-    parser.add_argument("--input_folder", type=str, help="Project input dir.")
-    parser.add_argument("--output_folder", type=str, default="", help="Project output dir.")
-    parser.add_argument("--num_src_images", type=int, default=-1, help="Related images")
+    parser.add_argument("--input_folder", type=str, required=True, help="Project input dir.")
+    parser.add_argument("--num_src_images", type=int, default=5, help="Related images")
     parser.add_argument("--theta0", type=float, default=5)
     parser.add_argument("--sigma1", type=float, default=1)
     parser.add_argument("--sigma2", type=float, default=10)
@@ -259,21 +258,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if not args.output_folder:
-        args.output_folder = args.input_folder
-
-    if args.input_folder is None or not os.path.isdir(args.input_folder):
-        raise Exception("Invalid input folder")
-
-    if args.output_folder is None or not os.path.isdir(args.output_folder):
-        raise Exception("Invalid output folder")
-
-    image_dir = os.path.join(args.input_folder, "images")
-    model_dir = os.path.join(args.input_folder, "sparse")
-    cam_dir = os.path.join(args.output_folder, "cams_1")
-    renamed_dir = os.path.join(args.output_folder, "images")
-
-    cameras, images, points3d = read_model(model_dir, ".bin")
+    cameras, images, points3d = read_model(os.path.join(args.input_folder, "sparse"), ".bin")
     num_images = len(images)
 
     param_type: Dict[str, List[str]] = {
@@ -303,7 +288,6 @@ if __name__ == "__main__":
             [0, 0, 1]
         ])
         intrinsic[camera_id] = i
-    print("intrinsic[1]\n", intrinsic[1], end="\n\n")
 
     # extrinsic
     extrinsic: List[np.ndarray] = []
@@ -313,7 +297,6 @@ if __name__ == "__main__":
         e[:3, 3] = images[i].tvec
         e[3, 3] = 1
         extrinsic.append(e)
-    print("extrinsic[0]\n", extrinsic[0], end="\n\n")
 
     # depth range and interval
     depth_ranges: List[Tuple[float, float]] = []
@@ -331,7 +314,6 @@ if __name__ == "__main__":
         depth_max = zs_sorted[int(len(zs) * .99)]
 
         depth_ranges.append((depth_min, depth_max))
-    print("depth_ranges[0]\n", depth_ranges[0], end="\n\n")
 
     def calc_score(ind1: int, ind2: int) -> float:
         id_i = images[ind1].point3d_ids
@@ -367,7 +349,6 @@ if __name__ == "__main__":
     for i in range(num_images):
         sorted_score = np.argsort(score[i])[::-1]
         view_sel.append([(k, score[i, k]) for k in sorted_score[:args.num_src_images]])
-    print("view_sel[0]\n", view_sel[0], end="\n\n")
 
     # write
     os.makedirs(cam_dir, exist_ok=True)
@@ -386,7 +367,7 @@ if __name__ == "__main__":
                 f.write("\n")
             f.write("\n%f %f \n" % (depth_ranges[i][0], depth_ranges[i][1]))
 
-    with open(os.path.join(args.output_folder, "pair.txt"), "w") as f:
+    with open(os.path.join(args.input_folder, "pair.txt"), "w") as f:
         f.write("%d\n" % len(images))
         for i, sorted_score in enumerate(view_sel):
             f.write("%d\n%d " % (i, len(sorted_score)))
@@ -394,10 +375,3 @@ if __name__ == "__main__":
                 f.write("%d %f " % (image_id, s))
             f.write("\n")
 
-    for i in range(num_images):
-        if args.convert_format:
-            img = cv2.imread(os.path.join(image_dir, images[i].name))
-            cv2.imwrite(os.path.join(renamed_dir, "%08d.jpg" % i), img)
-        else:
-            shutil.copyfile(os.path.join(image_dir, images[i].name),
-                            os.path.join(renamed_dir, "%08d.jpg" % i))

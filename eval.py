@@ -22,16 +22,11 @@ cudnn.benchmark = True
 parser = argparse.ArgumentParser(description='Predict depth, filter, and fuse')
 parser.add_argument('--color', action='store_true', help='color the point cloud')
 parser.add_argument('--use_cuda', action='store_true', help='use cuda to fuse')
-parser.add_argument('--model', default='IterMVS', help='select model')
 parser.add_argument('--testpath', help='testing data path')
-parser.add_argument('--testlist', help='testing scan list')
-parser.add_argument('--split', default='intermediate', help='select data')
 parser.add_argument('--batch_size', type=int, default=8, help='testing batch size')
 parser.add_argument('--n_views', type=int, default=5, help='num of view')
-parser.add_argument('--img_wh', nargs='+', type=int, default=[640, 480],
-        help='height and width of the image')
+parser.add_argument('--img_wh', nargs='+', type=int, default=[640, 480], help='height and width of the image')
 parser.add_argument('--loadckpt', default='./checkpoints/blendedmvs/model_000015.ckpt', help='load a specific checkpoint')
-parser.add_argument('--outdir', default='./outputs', help='output dir')
 parser.add_argument('--iteration', type=int, default=4, help='num of iteration of GRU')
 parser.add_argument('--geo_pixel_thres', type=float, default=1, help='pixel threshold for geometric consistency filtering')
 parser.add_argument('--geo_depth_thres', type=float, default=0.01, help='depth threshold for geometric consistency filtering')
@@ -39,6 +34,7 @@ parser.add_argument('--photo_thres', type=float, default=0.3, help='threshold fo
 
 # parse arguments and check
 args = parser.parse_args()
+args.outdir = args.testpath
 
 if args.use_cuda:
     device = torch.device('cuda:0')
