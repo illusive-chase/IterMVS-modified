@@ -15,7 +15,6 @@ from utils import *
 import sys
 from datasets.data_io import read_pfm, save_pfm
 import cv2
-from plyfile import PlyData, PlyElement
 from PIL import Image
 
 cudnn.benchmark = True
@@ -454,22 +453,11 @@ def filter_depth(scan_folder, out_folder, plyfilename, geo_pixel_thres, geo_dept
 
     print('Total {} points !'.format(sum([v.shape[0] for v in vertexs])))
 
-    return
-
-    vertexs = np.concatenate(vertexs, axis=0)
-    vertex_colors = np.concatenate(vertex_colors, axis=0)
-    vertexs = np.array([tuple(v) for v in vertexs], dtype=[('x', 'f4'), ('y', 'f4'), ('z', 'f4')])
-    vertex_colors = np.array([tuple(v) for v in vertex_colors], dtype=[('red', 'u1'), ('green', 'u1'), ('blue', 'u1')])
-
-    vertex_all = np.empty(len(vertexs), vertexs.dtype.descr + vertex_colors.dtype.descr)
-    for prop in vertexs.dtype.names:
-        vertex_all[prop] = vertexs[prop]
-    for prop in vertex_colors.dtype.names:
-        vertex_all[prop] = vertex_colors[prop]
-
-    el = PlyElement.describe(vertex_all, 'vertex')
-    PlyData([el]).write(plyfilename)
-    print("saving the final model to", plyfilename)
+    print("Saving the final model to", plyfilename)
+    if args.color:
+        write_ply(plyfilename, [np.concatenate(vertexs, axis=0), np.concatenate(vertex_colors, axis=0)], ['x', 'y', 'z', 'r', 'g', 'b'])
+    else:
+        write_ply(plyfilename, np.concatenate(vertexs, axis=0), ['x', 'y', 'z'])
 
 
 if __name__ == '__main__':
