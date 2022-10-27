@@ -1,1 +1,1 @@
-from models.net import Pipeline, full_loss
+from .net import Pipeline, full_loss

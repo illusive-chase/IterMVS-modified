@@ -1,5 +1,5 @@
 from torch.utils.data import Dataset
-from datasets.data_io import *
+from .data_io import *
 import os
 import numpy as np
 import cv2
