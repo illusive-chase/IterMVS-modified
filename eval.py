@@ -9,9 +9,10 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 import numpy as np
 import time
-from .datasets import MVSDataset, read_pfm, save_pfm
-from .models import Pipeline
-from .utils import print_args, tensor2numpy, tocuda, compare_pairs, write_ply
+if __name__ == '__main__':
+    import datasets, models, utils
+else:
+    from . import datasets, models, utils
 import sys
 import cv2
 from PIL import Image
@@ -100,11 +101,11 @@ def main(workdir,
     # run MVS model to save depth maps
     def save_depth(estimation_pairs):
         # dataset, dataloader
-        test_dataset = MVSDataset(workdir, estimation_pairs, n_views, img_wh)
+        test_dataset = datasets.MVSDataset(workdir, estimation_pairs, n_views, img_wh)
         TestImgLoader = DataLoader(test_dataset, batch_size, shuffle=False, num_workers=4, drop_last=False)
 
         # model
-        model = Pipeline(iteration=iteration, test=True)
+        model = models.Pipeline(iteration=iteration, test=True)
         model = nn.DataParallel(model)
         model.cuda()
 
@@ -117,11 +118,11 @@ def main(workdir,
         with torch.no_grad():
             for batch_idx, sample in enumerate(TestImgLoader):
                 start_time = time.time()
-                sample_cuda = tocuda(sample)
+                sample_cuda = utils.tocuda(sample)
                 outputs = model(sample_cuda["imgs"], sample_cuda["proj_matrices"],
                             sample_cuda["depth_min"], sample_cuda["depth_max"])
 
-                outputs = tensor2numpy(outputs)
+                outputs = utils.tensor2numpy(outputs)
                 del sample_cuda
                 print('Iter {}/{}, time = {:.3f}'.format(batch_idx, len(TestImgLoader), time.time() - start_time))
                 filenames = sample["filename"]
@@ -134,10 +135,10 @@ def main(workdir,
                     os.makedirs(confidence_filename.rsplit('/', 1)[0], exist_ok=True)
                     # save depth maps
                     depth_est = np.squeeze(depth_est, 0)
-                    save_pfm(depth_filename, depth_est)
+                    datasets.save_pfm(depth_filename, depth_est)
                     # save confidence maps
                     confidence = np.squeeze(confidence, 0)
-                    save_pfm(confidence_filename, confidence)
+                    datasets.save_pfm(confidence_filename, confidence)
 
     @lazy
     def get_ones(shape):
@@ -205,7 +206,7 @@ def main(workdir,
             self.intrinsics[1] *= img_wh[1] / original_h
             self.intrinsics_inv = np.linalg.inv(self.intrinsics)
             self.extrinsics_inv = np.linalg.inv(self.extrinsics)
-            depth_est = np.squeeze(read_pfm(os.path.join(workdir, 'depth_est/{:0>8}.pfm'.format(idx)))[0], 2)
+            depth_est = np.squeeze(datasets.read_pfm(os.path.join(workdir, 'depth_est/{:0>8}.pfm'.format(idx)))[0], 2)
             self.xyz1 = fast_vstack_1(self.intrinsics_inv @ (get_xy1(depth_est.shape[1], depth_est.shape[0]) * depth_est.reshape(1, -1))).copy()
             self.shape = depth_est.shape
 
@@ -229,7 +230,7 @@ def main(workdir,
 
         def make(self, compute_depth):
             if compute_depth or self.shape is None:
-                depth_est = np.squeeze(read_pfm(self.depth_path, flip=False)[0], 2)
+                depth_est = np.squeeze(datasets.read_pfm(self.depth_path, flip=False)[0], 2)
                 depth_est_tensor = torch.flip(torch.from_numpy(depth_est).to(device), [0])
                 self.xyz1 = fast_cuda_vstack_1(
                     self.intrinsics_inv @ (get_cuda_xy1(depth_est.shape[1], depth_est.shape[0]) * depth_est_tensor.view(1, -1))
@@ -350,10 +351,10 @@ def main(workdir,
             # load the estimated depth of the reference view
             if cuda >= 0:
                 ref_depth_est = get_cuda_view(ref_view).make(True)
-                photo_mask = torch.flip(torch.from_numpy(np.squeeze(read_pfm(os.path.join(workdir, 'confidence/{:0>8}.pfm'.format(ref_view)), False)[0], 2)).to(device), [0]) > photo_thres
+                photo_mask = torch.flip(torch.from_numpy(np.squeeze(datasets.read_pfm(os.path.join(workdir, 'confidence/{:0>8}.pfm'.format(ref_view)), False)[0], 2)).to(device), [0]) > photo_thres
             else:
-                ref_depth_est = np.squeeze(read_pfm(os.path.join(workdir, 'depth_est/{:0>8}.pfm'.format(ref_view)))[0], 2)
-                photo_mask = np.squeeze(read_pfm(os.path.join(workdir, 'confidence/{:0>8}.pfm'.format(ref_view)))[0], 2) > photo_thres
+                ref_depth_est = np.squeeze(datasets.read_pfm(os.path.join(workdir, 'depth_est/{:0>8}.pfm'.format(ref_view)))[0], 2)
+                photo_mask = np.squeeze(datasets.read_pfm(os.path.join(workdir, 'confidence/{:0>8}.pfm'.format(ref_view)))[0], 2) > photo_thres
 
             all_srcview_depth_ests = 0
             # compute the geometric mask
@@ -362,7 +363,7 @@ def main(workdir,
             for src_view in src_views:
 
                 # the estimated depth of the source view
-                src_depth_est = read_pfm(os.path.join(workdir, 'depth_est/{:0>8}.pfm'.format(src_view)))[0]
+                src_depth_est = datasets.read_pfm(os.path.join(workdir, 'depth_est/{:0>8}.pfm'.format(src_view)))[0]
                 
                 if cuda >= 0:
                     geo_mask, depth_reprojected = check_geometric_consistency_by_torch(ref_view,
@@ -442,7 +443,7 @@ def main(workdir,
     old_pair_path = os.path.join(args.workdir, "last_pair.txt")
     pair_data = read_pair_file(pair_path)
     old_pair_data = read_pair_file(old_pair_path) if os.path.exists(old_pair_path) and not recompute else []
-    estimation_pairs, fusion_pairs = compare_pairs(old_pair_data, pair_data)
+    estimation_pairs, fusion_pairs = utils.compare_pairs(old_pair_data, pair_data)
     if estimation_pairs != []:
         save_depth(estimation_pairs)
     if fusion_pairs != []:
@@ -459,9 +460,9 @@ def main(workdir,
     print('Total {} points !'.format(sum([v.shape[0] for v in xyz])))
     print("Saving the final model to", output)
     if color:
-        write_ply(output, [np.concatenate(xyz, axis=0), np.concatenate(rgb, axis=0)], ['x', 'y', 'z', 'red', 'green', 'blue'])
+        utils.write_ply(output, [np.concatenate(xyz, axis=0), np.concatenate(rgb, axis=0)], ['x', 'y', 'z', 'red', 'green', 'blue'])
     else:
-        write_ply(output, np.concatenate(xyz, axis=0), ['x', 'y', 'z'])
+        utils.write_ply(output, np.concatenate(xyz, axis=0), ['x', 'y', 'z'])
     with open(pair_path, 'r') as fr:
         with open(old_pair_path, 'w') as fw:
             fw.write(fr.read())
@@ -491,7 +492,7 @@ if __name__ == '__main__':
     else:
         device = torch.device('cpu')
     print("argv:", sys.argv[1:])
-    print_args(args)
+    utils.print_args(args)
     main(workdir=args.workdir,
          batch_size=args.batch_size,
          n_views=args.n_views,
