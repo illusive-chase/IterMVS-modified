@@ -39,7 +39,6 @@ parser.add_argument('--photo_thres', type=float, default=0.3, help='threshold fo
 
 # parse arguments and check
 args = parser.parse_args()
-args.use_cuda = True
 
 if args.use_cuda:
     device = torch.device('cuda:0')
@@ -50,8 +49,6 @@ print("argv:", sys.argv[1:])
 print_args(args)
 
 img_wh = (args.img_wh[0], args.img_wh[1]) # custom dataset
-
-
 
 
 def lazy(func):
@@ -239,6 +236,9 @@ class CUDAView:
             os.path.join(args.testpath, 'cams_1/{:0>8}_cam.txt'.format(idx)))
         self.intrinsics = torch.from_numpy(intrinsics).to(device)
         self.extrinsics = torch.from_numpy(extrinsics).to(device)
+        original_h, original_w = read_size(os.path.join(args.testpath, 'images/{:0>8}.jpg'.format(idx)))
+        self.intrinsics[0] *= args.img_wh[0] / original_w
+        self.intrinsics[1] *= args.img_wh[1] / original_h
         self.intrinsics_inv = torch.inverse(self.intrinsics)
         self.extrinsics_inv = torch.inverse(self.extrinsics)
         self.idx = idx
@@ -455,12 +455,12 @@ def filter_depth(scan_folder, out_folder, plyfilename, geo_pixel_thres, geo_dept
 
     print("Saving the final model to", plyfilename)
     if args.color:
-        write_ply(plyfilename, [np.concatenate(vertexs, axis=0), np.concatenate(vertex_colors, axis=0)], ['x', 'y', 'z', 'r', 'g', 'b'])
+        write_ply(plyfilename, [np.concatenate(vertexs, axis=0), np.concatenate(vertex_colors, axis=0)], ['x', 'y', 'z', 'red', 'green', 'blue'])
     else:
         write_ply(plyfilename, np.concatenate(vertexs, axis=0), ['x', 'y', 'z'])
 
 
 if __name__ == '__main__':
-    save_depth()
+    # save_depth()
     filter_depth(args.testpath, args.outdir, os.path.join(args.outdir, 'custom.ply'), 
                 args.geo_pixel_thres, args.geo_depth_thres, args.photo_thres, img_wh, geo_mask_thres=3)
