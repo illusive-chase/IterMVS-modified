@@ -8,22 +8,12 @@ from torchvision import transforms as T
 import math
 
 class MVSDataset(Dataset):
-    def __init__(self, datapath, n_views=5, img_wh=(640,480)):
+    def __init__(self, datapath, estimation_pairs, n_views=5, img_wh=(640,480)):
         self.levels = 4
         self.datapath = datapath
         self.img_wh = img_wh
-        self.build_metas()
+        self.metas = estimation_pairs
         self.n_views = n_views
-
-    def build_metas(self):
-        self.metas = []
-        with open(os.path.join(self.datapath, 'pair.txt')) as f:
-            num_viewpoint = int(f.readline())
-            for view_idx in range(num_viewpoint):
-                ref_view = int(f.readline().rstrip())
-                src_views = [int(x) for x in f.readline().rstrip().split()[1::2]]
-                if len(src_views) != 0:
-                    self.metas += [(ref_view, src_views)]
                     
 
     def read_cam_file(self, filename):

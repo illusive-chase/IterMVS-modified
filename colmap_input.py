@@ -100,13 +100,9 @@ def read_cameras_binary(path: str) -> Dict[int, Camera]:
     model_cameras: Dict[int, Camera] = {}
     with open(path, "rb") as fid:
         num_cameras = read_next_bytes(fid, 8, "Q")[0]
-        print("num of cameras")
-        print(num_cameras)
         for camera_line_index in range(num_cameras):
             camera_properties = read_next_bytes(fid, 24, "iiQQ")
             cam_id = camera_properties[0]
-            print("camera id")
-            print(cam_id)
 
             model_id = camera_properties[1]
             model_name = CAMERA_MODEL_IDS[camera_properties[1]].model_name
@@ -245,20 +241,8 @@ def quaternion_to_rotation_matrix(qvec: List[float]) -> np.ndarray:
          1 - 2 * qvec[1] ** 2 - 2 * qvec[2] ** 2]])
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Convert colmap results into input for PatchmatchNet")
-
-    parser.add_argument("--input_folder", type=str, required=True, help="Project input dir.")
-    parser.add_argument("--num_src_images", type=int, default=5, help="Related images")
-    parser.add_argument("--theta0", type=float, default=5)
-    parser.add_argument("--sigma1", type=float, default=1)
-    parser.add_argument("--sigma2", type=float, default=10)
-    parser.add_argument("--convert_format", action="store_true", default=False,
-                        help="If set, convert image to jpg format.")
-
-    args = parser.parse_args()
-
-    cameras, images, points3d = read_model(os.path.join(args.input_folder, "sparse"), ".bin")
+def main(input_folder, num_src_images, theta0, sigma1, sigma2):
+    cameras, images, points3d = read_model(os.path.join(input_folder, "sparse"), ".bin")
     num_images = len(images)
 
     param_type: Dict[str, List[str]] = {
@@ -329,8 +313,8 @@ if __name__ == "__main__":
             theta = (180 / np.pi) * np.arccos(
                 np.dot(cam_center_i - p, cam_center_j - p) / np.linalg.norm(cam_center_i - p) / np.linalg.norm(
                     cam_center_j - p))
-            view_score_ += np.exp(-(theta - args.theta0) * (theta - args.theta0) / (
-                    2 * (args.sigma1 if theta <= args.theta0 else args.sigma2) ** 2))
+            view_score_ += np.exp(-(theta - theta0) * (theta - theta0) / (
+                    2 * (sigma1 if theta <= theta0 else sigma2) ** 2))
         return view_score_
 
     # view selection
@@ -342,17 +326,17 @@ if __name__ == "__main__":
             score[i, j] = s
             score[j, i] = s
 
-    if args.num_src_images < 0:
-        args.num_src_images = num_images
+    if num_src_images < 0:
+        num_src_images = num_images
 
     view_sel: List[List[Tuple[int, float]]] = []
     for i in range(num_images):
         sorted_score = np.argsort(score[i])[::-1]
-        view_sel.append([(k, score[i, k]) for k in sorted_score[:args.num_src_images]])
+        view_sel.append([(k, score[i, k]) for k in sorted_score[:num_src_images]])
 
     # write
+    cam_dir = os.path.join(input_folder, "cams_1")
     os.makedirs(cam_dir, exist_ok=True)
-    os.makedirs(renamed_dir, exist_ok=True)
     for i in range(num_images):
         with open(os.path.join(cam_dir, "%08d_cam.txt" % i), "w") as f:
             f.write("extrinsic\n")
@@ -367,11 +351,29 @@ if __name__ == "__main__":
                 f.write("\n")
             f.write("\n%f %f \n" % (depth_ranges[i][0], depth_ranges[i][1]))
 
-    with open(os.path.join(args.input_folder, "pair.txt"), "w") as f:
+    with open(os.path.join(input_folder, "pair.txt"), "w") as f:
         f.write("%d\n" % len(images))
         for i, sorted_score in enumerate(view_sel):
             f.write("%d\n%d " % (i, len(sorted_score)))
             for image_id, s in sorted_score:
                 f.write("%d %f " % (image_id, s))
             f.write("\n")
+
+    for idx, image in enumerate(images):
+        target_name = "%08d.jpg" % idx
+        if image.name == target_name:
+            continue
+        shutil.copyfile(os.path.join(input_folder, "images", image.name), os.path.join(input_folder, "images", target_name))
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Convert colmap results into input for PatchmatchNet")
+
+    parser.add_argument("--input_folder", type=str, required=True, help="Project input dir.")
+    parser.add_argument("--num_src_images", type=int, default=5, help="Related images")
+    parser.add_argument("--theta0", type=float, default=5)
+    parser.add_argument("--sigma1", type=float, default=1)
+    parser.add_argument("--sigma2", type=float, default=10)
+    args = parser.parse_args()
+    main(args.input_folder, args.num_src_images, args.theta0, args.sigma1, args.sigma2)
 
