@@ -21,11 +21,11 @@ def compare_pairs(old_pairs, new_pairs):
 
 
 # print arguments
-def print_args(args):
-    print("################################  args  ################################")
+def print_args(args, stream):
+    stream.write("################################  args  ################################\n")
     for k, v in args.__dict__.items():
-        print("{0: <10}\t{1: <30}\t{2: <20}".format(k, str(v), str(type(v))))
-    print("########################################################################")
+        stream.write("{0: <10}\t{1: <30}\t{2: <20}\n".format(k, str(v), str(type(v))))
+    stream.write("########################################################################\n")
 
 
 # convert a function into recursive style to handle nested dict/list/tuple variables
