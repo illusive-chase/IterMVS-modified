@@ -441,8 +441,8 @@ def main(workdir,
             return vertexs, vertex_colors
             
 
-        pair_path = os.path.join(args.workdir, "pair.txt")
-        old_pair_path = os.path.join(args.workdir, "last_pair.txt")
+        pair_path = os.path.join(workdir, "pair.txt")
+        old_pair_path = os.path.join(workdir, "last_pair.txt")
         pair_data = read_pair_file(pair_path)
         old_pair_data = read_pair_file(old_pair_path) if os.path.exists(old_pair_path) and not recompute else []
         estimation_pairs, fusion_pairs = utils.compare_pairs(old_pair_data, pair_data)
