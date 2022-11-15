@@ -2,22 +2,20 @@ import argparse
 import os
 import torch
 import torch.nn as nn
-import torch.nn.parallel
 import torch.backends.cudnn as cudnn
-import torch.optim as optim
 from torch.utils.data import DataLoader
-import torch.nn.functional as F
 import numpy as np
 import time
 if __name__ == '__main__':
     from datasets import MVSDataset
-    import models, utils
+    from models import Pipeline
+    import utils
 else:
     from .datasets import MVSDataset
-    from . import models, utils
+    from .models import Pipeline
+    from . import utils
 import sys
 import cv2
-from PIL import Image
 
 cudnn.benchmark = True
 
@@ -74,7 +72,7 @@ def main(workdir,
             TestImgLoader = DataLoader(test_dataset, batch_size, shuffle=False, num_workers=4, drop_last=False)
 
             # model
-            model = models.Pipeline(iteration=iteration, test=True)
+            model = Pipeline(iteration=iteration, test=True)
             model = nn.DataParallel(model)
             model.cuda()
 
