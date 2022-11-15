@@ -297,7 +297,7 @@ def main(workdir,
             # for each reference view and the corresponding source views
             for ref_view, src_views in fusion_pairs:
                 if use_color:
-                    ref_img = (test_dataset.view_data[ref_view].LOD['level_0'] * 0.5 + 0.5)
+                    ref_img = test_dataset.view_data[ref_view].LOD['level_0']
                 # load the estimated depth of the reference view
                 if cuda >= 0:
                     ref_depth_est = get_cuda_view(ref_view).make(True)
@@ -363,7 +363,7 @@ def main(workdir,
                     confidence = confidence.cpu().numpy()
 
                     if use_color:
-                        vertex_color = (ref_img[valid_points.cpu().numpy()] * 255).astype(np.uint8)
+                        vertex_color = ref_img[valid_points.cpu().numpy()]
                 else:
                     view = get_view(ref_view)
 
@@ -371,7 +371,7 @@ def main(workdir,
                     xyz_world = (view.extrinsics_inv @ np.vstack((xyz_ref, np.ones_like(x))))[:3].transpose(1, 0)
 
                     if use_color:
-                        vertex_color = (ref_img[valid_points] * 255).astype(np.uint8)
+                        vertex_color = ref_img[valid_points]
 
                 # not use anymore
                 del view.xyz1
@@ -420,7 +420,7 @@ def main(workdir,
         if output:
             stream.write("Saving the final model to " + output + '\n')
             if use_color:
-                utils.write_ply(output, [np.concatenate(xyz, axis=0), np.concatenate(rgb, axis=0)], ['x', 'y', 'z', 'red', 'green', 'blue'])
+                utils.write_ply(output, [np.concatenate(xyz, axis=0), np.concatenate((rgb * 127.5 + 127.5).astype(np.uint8), axis=0)], ['x', 'y', 'z', 'red', 'green', 'blue'])
             else:
                 utils.write_ply(output, np.concatenate(xyz, axis=0), ['x', 'y', 'z'])
         with open(pair_path, 'r') as fr:
