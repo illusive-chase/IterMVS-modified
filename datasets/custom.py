@@ -1,5 +1,5 @@
 from torch.utils.data import Dataset
-from .data_io import read_pfm, save_pfm, read_cam_file, read_img
+from .data_io import read_cam_file, read_img
 import os
 import numpy as np
 from collections import namedtuple
