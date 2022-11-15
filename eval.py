@@ -10,9 +10,11 @@ import torch.nn.functional as F
 import numpy as np
 import time
 if __name__ == '__main__':
-    import datasets, models, utils
+    from datasets import MVSDataset
+    import models, utils
 else:
-    from . import datasets, models, utils
+    from .datasets import MVSDataset
+    from . import models, utils
 import sys
 import cv2
 from PIL import Image
@@ -27,15 +29,21 @@ def main(workdir,
          iteration,
          device,
          cuda,
-         color,
+         use_color,
          output,
          photo_thres,
          geo_pixel_thres,
          geo_depth_thres,
          geo_mask_thres,
          recompute,
-         redirect
+         redirect,
+         base_dataset=None
     ):
+
+    if base_dataset is None:
+        test_dataset = MVSDataset(workdir, n_views, img_wh)
+    else:
+        test_dataset = base_dataset
 
     with open(redirect, 'a') as stream:
 
@@ -47,46 +55,6 @@ def main(workdir,
                     same_dict[key] = func(*arglst)
                 return same_dict[key]
             return wrapper
-
-        # read intrinsics and extrinsics
-        def read_camera_parameters(filename):
-            with open(filename) as f:
-                lines = f.readlines()
-                lines = [line.rstrip() for line in lines]
-            # extrinsics: line [1,5), 4x4 matrix
-            extrinsics = np.fromstring(' '.join(lines[1:5]), dtype=np.float32, sep=' ').reshape((4, 4))
-            # intrinsics: line [7-10), 3x3 matrix
-            intrinsics = np.fromstring(' '.join(lines[7:10]), dtype=np.float32, sep=' ').reshape((3, 3))
-            
-            return intrinsics, extrinsics
-
-
-        # read an image
-        def read_img(filename, img_wh):
-            img = Image.open(filename)
-            # scale 0~255 to 0~1
-            np_img = np.array(img, dtype=np.float32) / 255.
-            original_h, original_w, _ = np_img.shape
-            np_img = cv2.resize(np_img, img_wh, interpolation=cv2.INTER_LINEAR)
-            return np_img, original_h, original_w
-
-        def read_size(filename):
-            img = Image.open(filename)
-            np_img = np.array(img, dtype=np.float32)
-            return np_img.shape[:2]
-
-
-        # save a binary mask
-        def save_mask(filename, mask):
-            assert mask.dtype == np.bool_
-            mask = mask.astype(np.uint8) * 255
-            Image.fromarray(mask).save(filename)
-
-        def save_depth_img(filename, depth):
-            # assert mask.dtype == np.bool
-            depth = depth.astype(np.float32) * 255
-            Image.fromarray(depth).save(filename)
-
 
         def read_pair_file(filename):
             data = []
@@ -100,11 +68,9 @@ def main(workdir,
                         data.append((ref_view, src_views))
             return data
 
-
         # run MVS model to save depth maps
-        def save_depth(estimation_pairs):
-            # dataset, dataloader
-            test_dataset = datasets.MVSDataset(workdir, estimation_pairs, n_views, img_wh)
+        def save_depth():
+            # dataloader
             TestImgLoader = DataLoader(test_dataset, batch_size, shuffle=False, num_workers=4, drop_last=False)
 
             # model
@@ -128,20 +94,11 @@ def main(workdir,
                     outputs = utils.tensor2numpy(outputs)
                     del sample_cuda
                     stream.write('Iter {}/{}, time = {:.3f}\n'.format(batch_idx, len(TestImgLoader), time.time() - start_time))
-                    filenames = sample["filename"]
 
                     # save depth maps and confidence maps
-                    for filename, depth_est, confidence in zip(filenames, outputs["depths_upsampled"], outputs["confidence_upsampled"]):
-                        depth_filename = os.path.join(workdir, filename.format('depth_est', '.pfm'))
-                        confidence_filename = os.path.join(workdir, filename.format('confidence', '.pfm'))
-                        os.makedirs(depth_filename.rsplit('/', 1)[0], exist_ok=True)
-                        os.makedirs(confidence_filename.rsplit('/', 1)[0], exist_ok=True)
-                        # save depth maps
-                        depth_est = np.squeeze(depth_est, 0)
-                        datasets.save_pfm(depth_filename, depth_est)
-                        # save confidence maps
-                        confidence = np.squeeze(confidence, 0)
-                        datasets.save_pfm(confidence_filename, confidence)
+                    for view_id, depth_est, confidence in zip(sample["view_id"], outputs["depths_upsampled"], outputs["confidence_upsampled"]):
+                        test_dataset.view_data[view_id.item()].depth[0] = np.squeeze(depth_est, 0)
+                        test_dataset.view_data[view_id.item()].confidence[0] = np.squeeze(confidence, 0)
 
         @lazy
         def get_ones(shape):
@@ -202,14 +159,12 @@ def main(workdir,
 
         class View:
             def __init__(self, idx):
-                self.intrinsics, self.extrinsics = read_camera_parameters(
-                    os.path.join(workdir, 'cams_1/{:0>8}_cam.txt'.format(idx)))
-                original_h, original_w = read_size(os.path.join(workdir, 'images/{:0>8}.jpg'.format(idx)))
-                self.intrinsics[0] *= img_wh[0] / original_w
-                self.intrinsics[1] *= img_wh[1] / original_h
+                view_data = test_dataset.view_data[idx]
+                self.intrinsics = view_data.intrinsics
+                self.extrinsics = view_data.extrinsics
                 self.intrinsics_inv = np.linalg.inv(self.intrinsics)
                 self.extrinsics_inv = np.linalg.inv(self.extrinsics)
-                depth_est = np.squeeze(datasets.read_pfm(os.path.join(workdir, 'depth_est/{:0>8}.pfm'.format(idx)))[0], 2)
+                depth_est = view_data.depth[0]
                 self.xyz1 = fast_vstack_1(self.intrinsics_inv @ (get_xy1(depth_est.shape[1], depth_est.shape[0]) * depth_est.reshape(1, -1))).copy()
                 self.shape = depth_est.shape
 
@@ -219,33 +174,27 @@ def main(workdir,
 
         class CUDAView:
             def __init__(self, idx):
-                intrinsics, extrinsics = read_camera_parameters(
-                    os.path.join(workdir, 'cams_1/{:0>8}_cam.txt'.format(idx)))
-                self.intrinsics = torch.from_numpy(intrinsics).to(device)
-                self.extrinsics = torch.from_numpy(extrinsics).to(device)
-                original_h, original_w = read_size(os.path.join(workdir, 'images/{:0>8}.jpg'.format(idx)))
-                self.intrinsics[0] *= img_wh[0] / original_w
-                self.intrinsics[1] *= img_wh[1] / original_h
+                view_data = test_dataset.view_data[idx]
+                self.intrinsics = torch.from_numpy(view_data.intrinsics).to(device)
+                self.extrinsics = torch.from_numpy(view_data.extrinsics).to(device)
                 self.intrinsics_inv = torch.inverse(self.intrinsics)
                 self.extrinsics_inv = torch.inverse(self.extrinsics)
-                self.depth_path = os.path.join(workdir, 'depth_est/{:0>8}.pfm'.format(idx))
+                self.depth_est = torch.from_numpy(view_data.depth[0])
                 self.shape = None
 
             def make(self, compute_depth):
                 if compute_depth or self.shape is None:
-                    depth_est = np.squeeze(datasets.read_pfm(self.depth_path, flip=False)[0], 2)
-                    depth_est_tensor = torch.flip(torch.from_numpy(depth_est).to(device), [0])
+                    depth_est_tensor = self.depth_est.to(device)
                     self.xyz1 = fast_cuda_vstack_1(
-                        self.intrinsics_inv @ (get_cuda_xy1(depth_est.shape[1], depth_est.shape[0]) * depth_est_tensor.view(1, -1))
+                        self.intrinsics_inv @ (get_cuda_xy1(self.depth_est.shape[1], self.depth_est.shape[0]) * depth_est_tensor.view(1, -1))
                     ).clone()
-                    self.shape = depth_est.shape
+                    self.shape = self.depth_est.shape
                     return depth_est_tensor
                 return None
 
         @lazy
         def get_cuda_view(idx):
             return CUDAView(idx)
-
 
 
         # project the reference point cloud into the source view, then project back
@@ -349,15 +298,17 @@ def main(workdir,
 
             # for each reference view and the corresponding source views
             for ref_view, src_views in fusion_pairs:
-                if color:
-                    ref_img = read_img(os.path.join(workdir, 'images/{:0>8}.jpg'.format(ref_view)), img_wh)[0]
+                if use_color:
+                    ref_img = (test_dataset.view_data[ref_view].LOD['level_0'] * 0.5 + 0.5)
                 # load the estimated depth of the reference view
                 if cuda >= 0:
                     ref_depth_est = get_cuda_view(ref_view).make(True)
-                    photo_mask = torch.flip(torch.from_numpy(np.squeeze(datasets.read_pfm(os.path.join(workdir, 'confidence/{:0>8}.pfm'.format(ref_view)), False)[0], 2)).to(device), [0]) > photo_thres
+                    confidence = torch.from_numpy(test_dataset.view_data[ref_view].confidence[0]).to(device)
+                    photo_mask = confidence > photo_thres
                 else:
-                    ref_depth_est = np.squeeze(datasets.read_pfm(os.path.join(workdir, 'depth_est/{:0>8}.pfm'.format(ref_view)))[0], 2)
-                    photo_mask = np.squeeze(datasets.read_pfm(os.path.join(workdir, 'confidence/{:0>8}.pfm'.format(ref_view)))[0], 2) > photo_thres
+                    ref_depth_est = test_dataset.view_data[ref_view].depth[0]
+                    confidence = test_dataset.view_data[ref_view].confidence[0]
+                    photo_mask = confidence > photo_thres
 
                 all_srcview_depth_ests = 0
                 # compute the geometric mask
@@ -366,7 +317,7 @@ def main(workdir,
                 for src_view in src_views:
 
                     # the estimated depth of the source view
-                    src_depth_est = datasets.read_pfm(os.path.join(workdir, 'depth_est/{:0>8}.pfm'.format(src_view)))[0]
+                    src_depth_est = test_dataset.view_data[src_view].depth[0]
                     
                     if cuda >= 0:
                         geo_mask, depth_reprojected = check_geometric_consistency_by_torch(ref_view,
@@ -398,45 +349,52 @@ def main(workdir,
                 else:
                     final_mask = np.logical_and(photo_mask, geo_mask)
 
-                    # os.makedirs(os.path.join(workdir, "mask"), exist_ok=True)
-                    # save_mask(os.path.join(workdir, "mask/{:0>8}_photo.png".format(ref_view)), photo_mask)
-                    # save_mask(os.path.join(workdir, "mask/{:0>8}_geo.png".format(ref_view)), geo_mask)
-                    # save_mask(os.path.join(workdir, "mask/{:0>8}_final.png".format(ref_view)), final_mask)
-
                     stream.write("processing {}, ref-view{:0>2}, geo_mask:{:3f} photo_mask:{:3f} final_mask: {:3f}\n".format(workdir, ref_view, geo_mask.mean(), photo_mask.mean(), final_mask.mean()))
 
                     height, width = depth_est_averaged.shape[:2]
                     x, y = get_grid(width, height)
 
                 valid_points = final_mask
-                x, y, depth = x[valid_points], y[valid_points], depth_est_averaged[valid_points]
+                x, y, depth, confidence = x[valid_points], y[valid_points], depth_est_averaged[valid_points], confidence[valid_points]
                 
                 if cuda >= 0:
                     view = get_cuda_view(ref_view)
 
                     xyz_ref = view.intrinsics_inv @ (torch.cat((x.view(1, -1), y.view(1, -1), torch.ones_like(x).view(1, -1)), dim=0) * depth)
-                    xyz_world = (view.extrinsics_inv @ torch.cat((xyz_ref, torch.ones_like(x).float().view(1, -1)), dim=0))[:3]
-                    vertexs.append(xyz_world.transpose(1, 0).cpu().numpy())
+                    xyz_world = (view.extrinsics_inv @ torch.cat((xyz_ref, torch.ones_like(x).float().view(1, -1)), dim=0))[:3].transpose(1, 0).cpu().numpy()
+                    confidence = confidence.cpu().numpy()
 
-                    if color:
-                        vertex_colors.append((ref_img[valid_points.cpu().numpy()] * 255).astype(np.uint8))
+                    if use_color:
+                        vertex_color = (ref_img[valid_points.cpu().numpy()] * 255).astype(np.uint8)
                 else:
                     view = get_view(ref_view)
 
                     xyz_ref = view.intrinsics_inv @ (np.vstack((x, y, np.ones_like(x))) * depth)
-                    xyz_world = (view.extrinsics_inv @ np.vstack((xyz_ref, np.ones_like(x))))[:3]
-                    vertexs.append(xyz_world.transpose(1, 0))
+                    xyz_world = (view.extrinsics_inv @ np.vstack((xyz_ref, np.ones_like(x))))[:3].transpose(1, 0)
 
-                    if color:
-                        vertex_colors.append((ref_img[valid_points] * 255).astype(np.uint8))
+                    if use_color:
+                        vertex_color = (ref_img[valid_points] * 255).astype(np.uint8)
 
                 # not use anymore
                 del view.xyz1
                 
-                os.makedirs(os.path.join(workdir, "result"), exist_ok=True)
-                if color:
-                    np.save(os.path.join(workdir, "result", "{:08d}.rgb.npy".format(ref_view)), vertex_colors[-1])
-                np.save(os.path.join(workdir, "result", "{:08d}.xyz.npy".format(ref_view)), vertexs[-1])
+                if base_dataset is None:
+                    os.makedirs(os.path.join(workdir, "result"), exist_ok=True)
+                    if use_color:
+                        np.save(os.path.join(workdir, "result", "{:08d}.rgb.npy".format(ref_view)), vertex_color)
+                    np.save(os.path.join(workdir, "result", "{:08d}.xyz.npy".format(ref_view)), xyz_world)
+                else:
+                    point_data = test_dataset.view_data[ref_view].points
+                    point_data.xyz[0] = xyz_world
+                    if use_color:
+                        point_data.rgb[0] = vertex_color
+                    point_data.conf[0] = confidence
+
+                if output:
+                    vertexs.append(xyz_world)
+                    if use_color:
+                        vertex_colors.append(vertex_color)
+
             
             return vertexs, vertex_colors
             
@@ -447,7 +405,8 @@ def main(workdir,
         old_pair_data = read_pair_file(old_pair_path) if os.path.exists(old_pair_path) and not recompute else []
         estimation_pairs, fusion_pairs = utils.compare_pairs(old_pair_data, pair_data)
         if estimation_pairs != []:
-            save_depth(estimation_pairs)
+            test_dataset.update(estimation_pairs)
+            save_depth()
         if fusion_pairs != []:
             xyz, rgb = filter_depth(fusion_pairs)
         else:
@@ -456,15 +415,16 @@ def main(workdir,
         for ref_view, src_views in pair_data:
             if ref_view not in fusion_pairs_set:
                 xyz.append(np.load(os.path.join(workdir, "result", "{:08d}.xyz.npy".format(ref_view))))
-                if color:
+                if use_color:
                     rgb.append(np.load(os.path.join(workdir, "result", "{:08d}.rgb.npy".format(ref_view))))
         
         stream.write('Total {} points !\n'.format(sum([v.shape[0] for v in xyz])))
-        stream.write("Saving the final model to " + output + '\n')
-        if color:
-            utils.write_ply(output, [np.concatenate(xyz, axis=0), np.concatenate(rgb, axis=0)], ['x', 'y', 'z', 'red', 'green', 'blue'])
-        else:
-            utils.write_ply(output, np.concatenate(xyz, axis=0), ['x', 'y', 'z'])
+        if output:
+            stream.write("Saving the final model to " + output + '\n')
+            if use_color:
+                utils.write_ply(output, [np.concatenate(xyz, axis=0), np.concatenate(rgb, axis=0)], ['x', 'y', 'z', 'red', 'green', 'blue'])
+            else:
+                utils.write_ply(output, np.concatenate(xyz, axis=0), ['x', 'y', 'z'])
         with open(pair_path, 'r') as fr:
             with open(old_pair_path, 'w') as fw:
                 fw.write(fr.read())
@@ -480,10 +440,10 @@ if __name__ == '__main__':
     parser.add_argument('--color', action='store_true', help='color the point cloud')
     parser.add_argument('--cuda', type=int, default=0, help='use cuda to fuse or not (=-1)')
     parser.add_argument('--workdir', '-d', required=True, help='data path')
-    parser.add_argument('--output', '-o', required=True, help='path to dump ply model')
+    parser.add_argument('--output', '-o', default='', help='path to dump ply model')
     parser.add_argument('--batch_size', type=int, default=8, help='testing batch size')
     parser.add_argument('--n_views', type=int, default=5, help='num of view')
-    parser.add_argument('--img_wh', nargs='+', type=int, default=[800, 600], help='height and width of the image')
+    parser.add_argument('--img_wh', nargs='+', type=int, default=[640, 480], help='height and width of the image')
     parser.add_argument('--loadckpt', '-l', default='./checkpoints/blendedmvs/model_000015.ckpt', help='load a specific checkpoint')
     parser.add_argument('--iteration', type=int, default=4, help='num of iteration of GRU')
     parser.add_argument('--geo_pixel_thres', '-gp', type=float, default=10, help='pixel threshold for geometric consistency filtering')
@@ -500,7 +460,8 @@ if __name__ == '__main__':
     with open(args.redirect, 'a') as stream:
         stream.write('argv: ' + str(sys.argv[1:]) + '\n')
         utils.print_args(args, stream)
-    main(workdir=args.workdir,
+    main(
+        workdir=args.workdir,
         batch_size=args.batch_size,
         n_views=args.n_views,
         img_wh=args.img_wh,
@@ -508,12 +469,13 @@ if __name__ == '__main__':
         iteration=args.iteration,
         device=device,
         cuda=args.cuda,
-        color=args.color,
+        use_color=args.color,
         output=args.output,
         photo_thres=args.photo_thres,
         geo_pixel_thres=args.geo_pixel_thres,
         geo_depth_thres=args.geo_depth_thres,
         geo_mask_thres=args.geo_mask_thres,
         recompute=args.recompute,
-        redirect=args.redirect)
+        redirect=args.redirect
+    )
     

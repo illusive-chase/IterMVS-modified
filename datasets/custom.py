@@ -1,50 +1,49 @@
 from torch.utils.data import Dataset
-from .data_io import *
+from .data_io import read_pfm, save_pfm, read_cam_file, read_img
 import os
 import numpy as np
-import cv2
-from PIL import Image
-from torchvision import transforms as T
-import math
+from collections import namedtuple
+
+ViewData = namedtuple('ViewData', ['extrinsics', 'intrinsics', 'depth_max', 'depth_min', 'idx', 'depth', 'confidence', 'LOD', 'points'])
+PointsData = namedtuple('PointsData', ['rgb', 'xyz', 'conf'])
+
 
 class MVSDataset(Dataset):
-    def __init__(self, datapath, estimation_pairs, n_views=5, img_wh=(640,480)):
+    def __init__(self, folder, n_views=5, img_wh=(640,480)):
         self.levels = 4
-        self.datapath = datapath
+        self.folder = folder
         self.img_wh = img_wh
-        self.metas = estimation_pairs
+        self.metas = []
         self.n_views = n_views
-                    
+        self.view_data = {}
 
-    def read_cam_file(self, filename):
-        with open(filename) as f:
-            lines = [line.rstrip() for line in f.readlines()]
-        # extrinsics: line [1,5), 4x4 matrix
-        extrinsics = np.fromstring(' '.join(lines[1:5]), dtype=np.float32, sep=' ')
-        extrinsics = extrinsics.reshape((4, 4))
-        # intrinsics: line [7-10), 3x3 matrix
-        intrinsics = np.fromstring(' '.join(lines[7:10]), dtype=np.float32, sep=' ')
-        intrinsics = intrinsics.reshape((3, 3))
-
-        depth_min = float(lines[11].split()[0])
-        depth_max = float(lines[11].split()[-1])
-
-        return intrinsics, extrinsics, depth_min, depth_max
-
-    def read_img(self, filename, h, w):
-        img = Image.open(filename)
-        # scale 0~255 to -1~1
-        np_img = 2*np.array(img, dtype=np.float32) / 255. - 1
-        original_h, original_w, _ = np_img.shape
-        np_img = cv2.resize(np_img, self.img_wh, interpolation=cv2.INTER_LINEAR)
-        
-        np_img_ms = {
-            "level_3": cv2.resize(np_img, (w//8, h//8), interpolation=cv2.INTER_LINEAR),
-            "level_2": cv2.resize(np_img, (w//4, h//4), interpolation=cv2.INTER_LINEAR),
-            "level_1": cv2.resize(np_img, (w//2, h//2), interpolation=cv2.INTER_LINEAR),
-            "level_0": np_img
-        }
-        return np_img_ms, original_h, original_w
+    def update(self, estimation_pairs):
+        self.metas = estimation_pairs
+        view_ids = set()
+        for ref_view, src_views in self.metas:
+            view_ids = view_ids | set([ref_view] + src_views[:self.n_views-1])
+        for view_id in view_ids:
+            if view_id in self.view_data:
+                continue
+            intrinsics, extrinsics, depth_min, depth_max = read_cam_file(os.path.join(self.folder, 'cams_1', '{:08d}_cam.txt'.format(view_id)))
+            LOD, original_h, original_w = read_img(os.path.join(self.folder, 'images', '{:08d}.jpg'.format(view_id)), self.img_wh[1], self.img_wh[0])
+            intrinsics[0] *= self.img_wh[0]/original_w
+            intrinsics[1] *= self.img_wh[1]/original_h
+            self.view_data[view_id] = ViewData(
+                extrinsics=extrinsics,
+                intrinsics=intrinsics,
+                depth_max=depth_max,
+                depth_min=depth_min,
+                idx=view_id,
+                depth=[None],
+                confidence=[None],
+                LOD=LOD,
+                points=PointsData(
+                    rgb=[None],
+                    xyz=[None],
+                    conf=[None]
+                )
+            )
 
     def __len__(self):
         return len(self.metas)
@@ -69,18 +68,17 @@ class MVSDataset(Dataset):
         proj_matrices_3 = []
 
         for i, vid in enumerate(view_ids):
-            img_filename = os.path.join(self.datapath, f'images/{vid:08d}.jpg')
-            proj_mat_filename = os.path.join(self.datapath, f'cams_1/{vid:08d}_cam.txt')
 
-            imgs, original_h, original_w = self.read_img(img_filename,self.img_wh[1], self.img_wh[0])
-            imgs_0.append(imgs['level_0'])
-            imgs_1.append(imgs['level_1'])
-            imgs_2.append(imgs['level_2'])
-            imgs_3.append(imgs['level_3'])
+            view_data = self.view_data[vid]
+            imgs_0.append(view_data.LOD['level_0'])
+            imgs_1.append(view_data.LOD['level_1'])
+            imgs_2.append(view_data.LOD['level_2'])
+            imgs_3.append(view_data.LOD['level_3'])
 
-            intrinsics, extrinsics, depth_min_, depth_max_ = self.read_cam_file(proj_mat_filename)
-            intrinsics[0] *= self.img_wh[0]/original_w
-            intrinsics[1] *= self.img_wh[1]/original_h
+            intrinsics = view_data.intrinsics.copy()
+            extrinsics = view_data.extrinsics
+            depth_min_ = view_data.depth_min
+            depth_max_ = view_data.depth_max
 
             proj_mat = extrinsics.copy()
             intrinsics[:2,:] *= 0.125
@@ -131,5 +129,5 @@ class MVSDataset(Dataset):
                 "proj_matrices": proj, # N*4*4
                 "depth_min": depth_min,         # scalar
                 "depth_max": depth_max,
-                "filename": '{}/' + '{:0>8}'.format(view_ids[0]) + "{}"
+                "view_id": ref_view
                 }  
