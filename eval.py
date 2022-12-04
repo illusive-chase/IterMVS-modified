@@ -420,7 +420,7 @@ def main(workdir,
         if output:
             stream.write("Saving the final model to " + output + '\n')
             if use_color:
-                utils.write_ply(output, [np.concatenate(xyz, axis=0), np.concatenate((rgb * 127.5 + 127.5).astype(np.uint8), axis=0)], ['x', 'y', 'z', 'red', 'green', 'blue'])
+                utils.write_ply(output, [np.concatenate(xyz, axis=0), (np.concatenate(rgb, axis=0) * 127.5 + 127.5).astype(np.uint8)], ['x', 'y', 'z', 'red', 'green', 'blue'])
             else:
                 utils.write_ply(output, np.concatenate(xyz, axis=0), ['x', 'y', 'z'])
         with open(pair_path, 'r') as fr:
