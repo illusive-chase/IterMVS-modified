@@ -54,7 +54,7 @@ class Evaluation(nn.Module):
 
                 del warped_feature, src_feature, src_proj
                 view_weights.append(F.interpolate(view_weight,
-                                    scale_factor=2, mode='bilinear'))
+                                    scale_factor=2, mode='bilinear', align_corners=False))
 
                 if self.training:
                     correlation_sum = correlation_sum + correlation * view_weight.unsqueeze(1) # [B, N, H, W]
@@ -78,7 +78,7 @@ class Evaluation(nn.Module):
             normalized_depth = index / (num_sample-1.0)
             depth = depth_unnormalization(normalized_depth, inverse_depth_min, inverse_depth_max)
             depth = F.interpolate(depth,
-                                    scale_factor=2, mode='bilinear')
+                                    scale_factor=2, mode='bilinear', align_corners=False))
             return view_weights, correlation, depth
 
         else:
@@ -95,7 +95,7 @@ class Evaluation(nn.Module):
                 if not l==2:
                     # need to interpolate
                     ref_feature_l = F.interpolate(ref_feature_l,
-                                    scale_factor=2**(l-2), mode='bilinear')
+                                    scale_factor=2**(l-2), mode='bilinear', align_corners=False))
 
                 i=0
                 for src_feature, src_proj in zip(src_features[f"level{l}"], src_projs[f"level{l}"]):
@@ -159,7 +159,7 @@ class Update(nn.Module):
     def hidden_init(self, corr):
         hidden = self.hidden_init_head(corr)
         hidden = F.interpolate(hidden,
-                        scale_factor=2, mode='bilinear')
+                        scale_factor=2, mode='bilinear', align_corners=False))
         hidden = torch.tanh(hidden)
         return hidden
 
@@ -308,7 +308,7 @@ class IterMVS(nn.Module):
                     depth_upsampled = depth_unnormalization(depth_upsampled, inverse_depth_min, inverse_depth_max)
                     depths_upsampled.append(depth_upsampled)
                     confidence_upsampled = F.interpolate(confidence,
-                                            scale_factor=4, mode='bilinear')
+                                            scale_factor=4, mode='bilinear', align_corners=False))
                 
                 confidence = confidence.detach()
                 normalized_depth = normalized_depth.detach()
@@ -321,7 +321,7 @@ class IterMVS(nn.Module):
                     depth_upsampled = upsample(normalized_depth, upsample_weight)
                     depth_upsampled = depth_unnormalization(depth_upsampled, inverse_depth_min, inverse_depth_max)
                     confidence_upsampled = F.interpolate(confidence,
-                                            scale_factor=4, mode='bilinear')
+                                            scale_factor=4, mode='bilinear', align_corners=False))
 
         if self.test:
             return depth, depth_upsampled, confidence, confidence_upsampled

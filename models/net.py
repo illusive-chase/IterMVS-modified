@@ -43,10 +43,10 @@ class FeatureNet(nn.Module):
             fea3 = self.layer3(fea2)
 
             feas["level3"] = torch.unbind(self.output3(fea3).view(B,V,-1,H//8,W//8), dim=1)
-            intra_feat = F.interpolate(fea3, scale_factor=2, mode="bilinear") + self.inner2(fea2)
+            intra_feat = F.interpolate(fea3, scale_factor=2, mode="bilinear", align_corners=False) + self.inner2(fea2)
             # del fea2, fea3
             feas['level2'] = torch.unbind(self.output2(intra_feat).view(B,V,-1,H//4,W//4), dim=1)
-            intra_feat = F.interpolate(intra_feat, scale_factor=2, mode="bilinear") + self.inner1(fea1)
+            intra_feat = F.interpolate(intra_feat, scale_factor=2, mode="bilinear", align_corners=False) + self.inner1(fea1)
             # del fea1
             feas['level1'] = torch.unbind(self.output1(intra_feat).view(B,V,-1,H//2,W//2), dim=1)
         else:
@@ -59,9 +59,9 @@ class FeatureNet(nn.Module):
                 fea2 = self.layer2(fea1)
                 fea3 = self.layer3(fea2)
                 feas["level3"].append(self.output3(fea3))
-                intra_feat = F.interpolate(fea3, scale_factor=2, mode="bilinear") + self.inner2(fea2)
+                intra_feat = F.interpolate(fea3, scale_factor=2, mode="bilinear", align_corners=False) + self.inner2(fea2)
                 feas["level2"].append(self.output2(intra_feat))
-                intra_feat = F.interpolate(intra_feat, scale_factor=2, mode="bilinear") + self.inner1(fea1)
+                intra_feat = F.interpolate(intra_feat, scale_factor=2, mode="bilinear", align_corners=False) + self.inner1(fea1)
                 feas["level1"].append(self.output1(intra_feat))
         return feas
 
