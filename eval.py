@@ -177,12 +177,12 @@ def main(workdir,
                 self.extrinsics = torch.from_numpy(view_data.extrinsics).to(device)
                 self.intrinsics_inv = torch.inverse(self.intrinsics)
                 self.extrinsics_inv = torch.inverse(self.extrinsics)
-                self.depth_est = torch.from_numpy(view_data.depth[0])
+                self.depth_est = view_data.depth[0]
                 self.shape = None
 
             def make(self, compute_depth):
                 if compute_depth or self.shape is None:
-                    depth_est_tensor = self.depth_est.to(device)
+                    depth_est_tensor = torch.from_numpy(self.depth_est).to(device)
                     self.xyz1 = fast_cuda_vstack_1(
                         self.intrinsics_inv @ (get_cuda_xy1(self.depth_est.shape[1], self.depth_est.shape[0]) * depth_est_tensor.view(1, -1))
                     ).clone()
@@ -416,8 +416,8 @@ def main(workdir,
                 if use_color:
                     rgb.append(np.load(os.path.join(workdir, "result", "{:08d}.rgb.npy".format(ref_view))))
         
-        stream.write('Total {} points !\n'.format(sum([v.shape[0] for v in xyz])))
         if output:
+            stream.write('Total {} points !\n'.format(sum([v.shape[0] for v in xyz])))
             stream.write("Saving the final model to " + output + '\n')
             if use_color:
                 utils.write_ply(output, [np.concatenate(xyz, axis=0), (np.concatenate(rgb, axis=0) * 127.5 + 127.5).astype(np.uint8)], ['x', 'y', 'z', 'red', 'green', 'blue'])
