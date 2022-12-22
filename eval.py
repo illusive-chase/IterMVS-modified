@@ -409,14 +409,15 @@ def main(workdir,
             xyz, rgb = filter_depth(fusion_pairs)
         else:
             xyz, rgb = [], []
-        fusion_pairs_set = { ref_view for ref_view, src_views in fusion_pairs }
-        for ref_view, src_views in pair_data:
-            if ref_view not in fusion_pairs_set:
-                xyz.append(np.load(os.path.join(workdir, "result", "{:08d}.xyz.npy".format(ref_view))))
-                if use_color:
-                    rgb.append(np.load(os.path.join(workdir, "result", "{:08d}.rgb.npy".format(ref_view))))
-        
+
         if output:
+            fusion_pairs_set = { ref_view for ref_view, src_views in fusion_pairs }
+            for ref_view, src_views in pair_data:
+                if ref_view not in fusion_pairs_set:
+                    xyz.append(np.load(os.path.join(workdir, "result", "{:08d}.xyz.npy".format(ref_view))))
+                    if use_color:
+                        rgb.append(np.load(os.path.join(workdir, "result", "{:08d}.rgb.npy".format(ref_view))))
+        
             stream.write('Total {} points !\n'.format(sum([v.shape[0] for v in xyz])))
             stream.write("Saving the final model to " + output + '\n')
             if use_color:
