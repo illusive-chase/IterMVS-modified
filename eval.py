@@ -67,7 +67,9 @@ def main(workdir,
             return data
 
         # run MVS model to save depth maps
-        def save_depth():
+        def save_depth(dump_depth):
+            if dump_depth:
+                os.makedirs(dump_depth, exist_ok=True)
             # dataloader
             TestImgLoader = DataLoader(test_dataset, batch_size, shuffle=False, num_workers=4, drop_last=False)
 
@@ -95,8 +97,12 @@ def main(workdir,
 
                     # save depth maps and confidence maps
                     for view_id, depth_est, confidence in zip(sample["view_id"], outputs["depths_upsampled"], outputs["confidence_upsampled"]):
-                        test_dataset.view_data[view_id.item()].depth[0] = np.squeeze(depth_est, 0)
-                        test_dataset.view_data[view_id.item()].confidence[0] = np.squeeze(confidence, 0)
+                        view_id = view_id.item()
+                        depth_est = np.squeeze(depth_est, 0)
+                        test_dataset.view_data[view_id].depth[0] = depth_est
+                        test_dataset.view_data[view_id].confidence[0] = np.squeeze(confidence, 0)
+                        if dump_depth:
+                            np.save(os.path.join(dump_depth, '{:08d}.npy'.format(view_id)), depth_est)
 
         @lazy
         def get_ones(shape):
@@ -404,7 +410,7 @@ def main(workdir,
         estimation_pairs, fusion_pairs = utils.compare_pairs(old_pair_data, pair_data)
         if estimation_pairs != []:
             test_dataset.update(estimation_pairs)
-            save_depth()
+            save_depth(args.dump_depth)
         if fusion_pairs != []:
             xyz, rgb = filter_depth(fusion_pairs)
         else:
@@ -440,6 +446,7 @@ if __name__ == '__main__':
     parser.add_argument('--cuda', type=int, default=0, help='use cuda to fuse or not (=-1)')
     parser.add_argument('--workdir', '-d', required=True, help='data path')
     parser.add_argument('--output', '-o', default='', help='path to dump ply model')
+    parser.add_argument('--dump_depth', default='', help='folder to dump estimated depth')
     parser.add_argument('--batch_size', type=int, default=8, help='testing batch size')
     parser.add_argument('--n_views', type=int, default=5, help='num of view')
     parser.add_argument('--img_wh', nargs='+', type=int, default=[640, 480], help='height and width of the image')
