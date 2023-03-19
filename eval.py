@@ -29,6 +29,7 @@ def main(workdir,
          cuda,
          use_color,
          output,
+         dump_depth,
          photo_thres,
          geo_pixel_thres,
          geo_depth_thres,
@@ -67,7 +68,7 @@ def main(workdir,
             return data
 
         # run MVS model to save depth maps
-        def save_depth(dump_depth):
+        def save_depth():
             if dump_depth:
                 os.makedirs(dump_depth, exist_ok=True)
             # dataloader
@@ -410,7 +411,7 @@ def main(workdir,
         estimation_pairs, fusion_pairs = utils.compare_pairs(old_pair_data, pair_data)
         if estimation_pairs != []:
             test_dataset.update(estimation_pairs)
-            save_depth(args.dump_depth)
+            save_depth()
         if fusion_pairs != []:
             xyz, rgb = filter_depth(fusion_pairs)
         else:
@@ -477,6 +478,7 @@ if __name__ == '__main__':
         cuda=args.cuda,
         use_color=args.color,
         output=args.output,
+        dump_depth=args.dump_depth,
         photo_thres=args.photo_thres,
         geo_pixel_thres=args.geo_pixel_thres,
         geo_depth_thres=args.geo_depth_thres,
