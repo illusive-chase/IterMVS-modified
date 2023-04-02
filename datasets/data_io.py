@@ -104,3 +104,14 @@ def read_img(filename, h, w):
         "level_0": np_img
     }
     return np_img_ms, original_h, original_w
+
+def read_pair_file(filename):
+    data = []
+    with open(filename) as f:
+        num_viewpoint = int(f.readline())
+        for view_idx in range(num_viewpoint):
+            ref_view = int(f.readline().rstrip())
+            src_views = [int(x) for x in f.readline().rstrip().split()[1::2]]
+            if len(src_views) != 0:
+                data.append((ref_view, src_views))
+    return data

@@ -7,11 +7,11 @@ from torch.utils.data import DataLoader
 import numpy as np
 import time
 if __name__ == '__main__':
-    from datasets import MVSDataset
+    from datasets import MVSDataset, read_pair_file
     from models import Pipeline
     import utils
 else:
-    from .datasets import MVSDataset
+    from .datasets import MVSDataset, read_pair_file
     from .models import Pipeline
     from . import utils
 import sys
@@ -54,18 +54,6 @@ def main(workdir,
                     same_dict[key] = func(*arglst)
                 return same_dict[key]
             return wrapper
-
-        def read_pair_file(filename):
-            data = []
-            with open(filename) as f:
-                num_viewpoint = int(f.readline())
-                # 49 viewpoints
-                for view_idx in range(num_viewpoint):
-                    ref_view = int(f.readline().rstrip())
-                    src_views = [int(x) for x in f.readline().rstrip().split()[1::2]]
-                    if len(src_views) != 0:
-                        data.append((ref_view, src_views))
-            return data
 
         # run MVS model to save depth maps
         def save_depth():
