@@ -44,7 +44,7 @@ def main(workdir,
     else:
         test_dataset = base_dataset
 
-    with open(redirect, 'a') as stream:
+    with open(redirect, ('w' if redirect.startswith('/dev/') else 'a')) as stream:
 
         def lazy(func):
             same_dict = {}
