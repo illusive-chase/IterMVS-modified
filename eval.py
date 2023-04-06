@@ -60,7 +60,7 @@ def main(workdir,
             if dump_depth:
                 os.makedirs(dump_depth, exist_ok=True)
             # dataloader
-            TestImgLoader = DataLoader(test_dataset, batch_size, shuffle=False, num_workers=4, drop_last=False)
+            TestImgLoader = DataLoader(test_dataset, batch_size, shuffle=False, num_workers=(4 if base_dataset is None else 0), drop_last=False)
 
             # model
             model = Pipeline(iteration=iteration, test=True)
