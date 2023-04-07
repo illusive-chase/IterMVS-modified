@@ -67,7 +67,7 @@ def main(workdir,
 
             # load checkpoint file specified by args.loadckpt
             stream.write("loading model {}\n".format(loadckpt))
-            state_dict = torch.load(loadckpt)
+            state_dict = torch.load(loadckpt, map_location=lambda storage, loc: storage.to(device))
             model.load_state_dict({ k[len('module.'):] : v for k, v in state_dict['model'].items() })
             model.eval()
             
