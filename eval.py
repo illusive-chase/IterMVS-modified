@@ -67,8 +67,8 @@ def main(workdir,
 
             # load checkpoint file specified by args.loadckpt
             stream.write("loading model {}\n".format(loadckpt))
-            state_dict = torch.load(loadckpt, map_location={'cuda:0':f'cuda:{cuda}'})
-            model.load_state_dict({ k[len('module.'):] : v for k, v in state_dict['model'].items() })
+            state_dict = torch.load(loadckpt)
+            model.load_state_dict(state_dict)
             model.eval()
             
             with torch.no_grad():
