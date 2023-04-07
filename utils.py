@@ -30,15 +30,15 @@ def print_args(args, stream):
 
 # convert a function into recursive style to handle nested dict/list/tuple variables
 def make_recursive_func(func):
-    def wrapper(vars):
+    def wrapper(vars, *args, **kwargs):
         if isinstance(vars, list):
-            return [wrapper(x) for x in vars]
+            return [wrapper(x, *args, **kwargs) for x in vars]
         elif isinstance(vars, tuple):
-            return tuple([wrapper(x) for x in vars])
+            return tuple([wrapper(x, *args, **kwargs) for x in vars])
         elif isinstance(vars, dict):
-            return {k: wrapper(v) for k, v in vars.items()}
+            return {k: wrapper(v, *args, **kwargs) for k, v in vars.items()}
         else:
-            return func(vars)
+            return func(vars, *args, **kwargs)
 
     return wrapper
 
@@ -54,9 +54,9 @@ def tensor2numpy(vars):
 
 
 @make_recursive_func
-def tocuda(vars):
+def tocuda(vars, device):
     if isinstance(vars, torch.Tensor):
-        return vars.cuda()
+        return vars.to(device)
     elif isinstance(vars, str):
         return vars
     else:

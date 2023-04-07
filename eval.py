@@ -63,20 +63,18 @@ def main(workdir,
             TestImgLoader = DataLoader(test_dataset, batch_size, shuffle=False, num_workers=(4 if base_dataset is None else 0), drop_last=False)
 
             # model
-            model = Pipeline(iteration=iteration, test=True)
-            model = nn.DataParallel(model)
-            model.cuda()
+            model = Pipeline(iteration=iteration, test=True).to(device)
 
             # load checkpoint file specified by args.loadckpt
             stream.write("loading model {}\n".format(loadckpt))
             state_dict = torch.load(loadckpt)
-            model.load_state_dict(state_dict['model'])
+            model.load_state_dict({ k[len('module.'):] : v for k, v in state_dict['model'].items() })
             model.eval()
             
             with torch.no_grad():
                 for batch_idx, sample in enumerate(TestImgLoader):
                     start_time = time.time()
-                    sample_cuda = utils.tocuda(sample)
+                    sample_cuda = utils.tocuda(sample, device)
                     outputs = model(sample_cuda["imgs"], sample_cuda["proj_matrices"],
                                 sample_cuda["depth_min"], sample_cuda["depth_max"])
 
