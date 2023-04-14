@@ -341,12 +341,11 @@ def main(workdir,
                     height, width = depth_est_averaged.shape[:2]
                     x, y = get_grid(width, height)
 
-                if args.dump_depth:
-                    os.makedirs(args.dump, exist_ok=True)
+                if dump_depth:
                     np.save(
                         os.path.join(workdir, "result", '{:08d}.dpt.npy'.format(ref_view)),
                         {
-                            'mask': final_mask.cpu().numpy() if cuda >= 0 else final_mask
+                            'mask': final_mask.cpu().numpy() if cuda >= 0 else final_mask,
                             'depth': depth_est_averaged.cpu().numpy() if cuda >= 0 else depth_est_averaged
                         }
                     )
