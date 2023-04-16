@@ -342,6 +342,7 @@ def main(workdir,
                     x, y = get_grid(width, height)
 
                 if dump_depth:
+                    os.makedirs(os.path.join(workdir, "result"), exist_ok=True)
                     np.save(
                         os.path.join(workdir, "result", '{:08d}.dpt.npy'.format(ref_view)),
                         {
