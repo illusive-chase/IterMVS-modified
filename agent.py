@@ -193,10 +193,12 @@ class IncrementalIterMVSAgent:
 
     def reset(self):
         self.cache = {}
+        self.pair_data = []
         gc.collect()
 
     def step(self, pair_data):
-        estimation_pairs, fusion_pairs = compare_pairs(self.dataset.metas, pair_data)
+        estimation_pairs, fusion_pairs = compare_pairs(self.pair_data, pair_data)
+        self.pair_data = pair_data
         self.dataset.update(estimation_pairs)
         with open(self.redirect, ('w' if self.redirect.startswith('/dev/') else 'a')) as stream:
             self.save_depth(stream)
