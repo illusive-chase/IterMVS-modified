@@ -4,7 +4,19 @@ import os
 import numpy as np
 from collections import namedtuple
 
-ViewData = namedtuple('ViewData', ['extrinsics', 'intrinsics', 'depth_max', 'depth_min', 'idx', 'depth', 'confidence', 'LOD', 'points'])
+ViewData = namedtuple('ViewData', [
+    'extrinsics',
+    'intrinsics',
+    'inv_extrinsics',
+    'inv_intrinsics',
+    'depth_max',
+    'depth_min',
+    'idx',
+    'depth',
+    'confidence',
+    'LOD',
+    'points'
+])
 PointsData = namedtuple('PointsData', ['rgb', 'xyz', 'conf'])
 
 
@@ -17,14 +29,8 @@ class MVSDataset(Dataset):
         self.n_views = n_views
         self.view_data = {}
 
-    def update(self, estimation_pairs):
-        self.metas = estimation_pairs
-        view_ids = set()
-        for ref_view, src_views in self.metas:
-            view_ids = view_ids | set([ref_view] + src_views[:self.n_views-1])
-        for view_id in view_ids:
-            if view_id in self.view_data:
-                continue
+    def load(self, view_id):
+        if view_id not in self.view_data:
             intrinsics, extrinsics, depth_min, depth_max = read_cam_file(os.path.join(self.folder, 'cams_1', '{:08d}_cam.txt'.format(view_id)))
             LOD, original_h, original_w = read_img(os.path.join(self.folder, 'images', '{:08d}.jpg'.format(view_id)), self.img_wh[1], self.img_wh[0])
             intrinsics[0] *= self.img_wh[0]/original_w
@@ -32,6 +38,8 @@ class MVSDataset(Dataset):
             self.view_data[view_id] = ViewData(
                 extrinsics=extrinsics,
                 intrinsics=intrinsics,
+                inv_extrinsics=np.linalg.inv(extrinsics),
+                inv_intrinsics=np.linalg.inv(intrinsics),
                 depth_max=depth_max,
                 depth_min=depth_min,
                 idx=view_id,
@@ -44,6 +52,16 @@ class MVSDataset(Dataset):
                     conf=[None]
                 )
             )
+
+    def update(self, estimation_pairs):
+        self.metas = estimation_pairs
+        view_ids = set()
+        for ref_view, src_views in self.metas:
+            view_ids = view_ids | set([ref_view] + src_views[:self.n_views-1])
+        for view_id in view_ids:
+            if view_id not in self.view_data:
+                self.load(view_id)
+            
 
     def __len__(self):
         return len(self.metas)

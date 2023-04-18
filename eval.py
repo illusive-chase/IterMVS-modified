@@ -2,22 +2,14 @@ import argparse
 import os
 import torch
 import torch.nn as nn
-import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader
 import numpy as np
 import time
-if __name__ == '__main__':
-    from datasets import MVSDataset, read_pair_file
-    from models import Pipeline
-    import utils
-else:
-    from .datasets import MVSDataset, read_pair_file
-    from .models import Pipeline
-    from . import utils
+from datasets import MVSDataset, read_pair_file
+from models import Pipeline
+import utils
 import sys
 import cv2
-
-cudnn.benchmark = True
 
 def main(workdir,
          batch_size,
@@ -426,6 +418,9 @@ def main(workdir,
 
 
 if __name__ == '__main__':
+
+    import torch.backends.cudnn as cudnn
+    cudnn.benchmark = True
     
     # parse arguments and check
     parser = argparse.ArgumentParser(description='Predict depth, filter, and fuse')
