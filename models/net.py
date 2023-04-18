@@ -76,8 +76,6 @@ class Pipeline(nn.Module):
         self.iter_mvs = IterMVS(iteration, self.feature_dim[2], self.hidden_dim, test)
         
     def forward(self, imgs, proj_matrices, depth_min, depth_max):
-        imgs_0 = torch.unbind(imgs['level_0'], 1)
-        imgs_2 = torch.unbind(imgs['level_2'], 1)
 
         features = self.feature_net(imgs['level_0'])
         ref_feature = {
@@ -94,7 +92,7 @@ class Pipeline(nn.Module):
         proj_matrices_1 = torch.unbind(proj_matrices['level_1'].float(), 1)
         proj_matrices_2 = torch.unbind(proj_matrices['level_2'].float(), 1)
         proj_matrices_3 = torch.unbind(proj_matrices['level_3'].float(), 1)
-        ref_proj = {
+        inv_ref_proj = {
                 "level3": proj_matrices_3[0],
                 "level2": proj_matrices_2[0],
                 "level1": proj_matrices_1[0]
@@ -109,8 +107,7 @@ class Pipeline(nn.Module):
         depth_max = depth_max.float()
 
         if not self.test:
-            depths, depths_upsampled, confidences, confidence_upsampled = self.iter_mvs(ref_feature, src_features,
-                        ref_proj, src_projs, depth_min, depth_max)
+            depths, depths_upsampled, confidences, confidence_upsampled = self.iter_mvs(ref_feature, src_features, inv_ref_proj, src_projs, depth_min, depth_max)
 
             return {
                         "depths": depths, 
@@ -119,8 +116,7 @@ class Pipeline(nn.Module):
                         "confidence_upsampled": confidence_upsampled,
                     }
         else:
-            depth, depths_upsampled, confidence, confidence_upsampled = self.iter_mvs(ref_feature, src_features,
-                        ref_proj, src_projs, depth_min, depth_max)
+            depth, depths_upsampled, confidence, confidence_upsampled = self.iter_mvs(ref_feature, src_features, inv_ref_proj, src_projs, depth_min, depth_max)
 
             return {
                         "depths_upsampled": depths_upsampled,

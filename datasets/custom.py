@@ -101,22 +101,22 @@ class MVSDataset(Dataset):
             proj_mat = extrinsics.copy()
             intrinsics[:2,:] *= 0.125
             proj_mat[:3, :4] = np.matmul(intrinsics, proj_mat[:3, :4])
-            proj_matrices_3.append(proj_mat)
+            proj_matrices_3.append(proj_mat if i > 0 else np.linalg.inv(proj_mat))
 
             proj_mat = extrinsics.copy()
             intrinsics[:2,:] *= 2
             proj_mat[:3, :4] = np.matmul(intrinsics, proj_mat[:3, :4])
-            proj_matrices_2.append(proj_mat)
+            proj_matrices_2.append(proj_mat if i > 0 else np.linalg.inv(proj_mat))
 
             proj_mat = extrinsics.copy()
             intrinsics[:2,:] *= 2
             proj_mat[:3, :4] = np.matmul(intrinsics, proj_mat[:3, :4])
-            proj_matrices_1.append(proj_mat)
+            proj_matrices_1.append(proj_mat if i > 0 else np.linalg.inv(proj_mat))
 
             proj_mat = extrinsics.copy()
             intrinsics[:2,:] *= 2
             proj_mat[:3, :4] = np.matmul(intrinsics, proj_mat[:3, :4])
-            proj_matrices_0.append(proj_mat)
+            proj_matrices_0.append(proj_mat if i > 0 else np.linalg.inv(proj_mat))
 
             if i == 0:  # reference view
                 depth_min = depth_min_

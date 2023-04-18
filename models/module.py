@@ -65,26 +65,18 @@ class ConvGRU(nn.Module):
 
         return h
 
-def differentiable_warping(src_fea, src_proj, ref_proj, depth_samples, return_mask=False):
+def differentiable_warping(src_fea, src_proj, inv_ref_proj, depth_samples, return_mask=False):
     # src_fea: [B, C, H, W]
     # src_proj: [B, 4, 4]
-    # ref_proj: [B, 4, 4]
+    # inv_ref_proj: [B, 4, 4]
     # depth_samples: [B, Ndepth, H, W] 
     # out: [B, C, Ndepth, H, W]
     batch, num_depth, height, width = depth_samples.size()
     height1, width1 = src_fea.size()[2:]
 
     with torch.no_grad():
-        if batch==2:
-            inv_ref_proj = []
-            for i in range(batch):
-                inv_ref_proj.append(torch.inverse(ref_proj[i]).unsqueeze(0))
-            inv_ref_proj = torch.cat(inv_ref_proj, dim=0)
-            assert (not torch.isnan(inv_ref_proj).any()), "nan in inverse(ref_proj)"
-            proj = torch.matmul(src_proj, inv_ref_proj)
-        else:
-            proj = torch.matmul(src_proj, torch.inverse(ref_proj))
-            assert (not torch.isnan(proj).any()), "nan in proj"
+        proj = torch.matmul(src_proj, inv_ref_proj)
+        assert (not torch.isnan(proj).any()), "nan in proj"
 
         rot = proj[:, :3, :3]  # [B,3,3]
         trans = proj[:, :3, 3:4]  # [B,3,1]
@@ -98,8 +90,7 @@ def differentiable_warping(src_fea, src_proj, ref_proj, depth_samples, return_ma
         xyz = torch.unsqueeze(xyz, 0).repeat(batch, 1, 1)  # [B, 3, H*W]
         rot_xyz = torch.matmul(rot, xyz)  # [B, 3, H*W]
 
-        rot_depth_xyz = rot_xyz.unsqueeze(2).repeat(1, 1, num_depth, 1) * depth_samples.view(batch, 1, num_depth,
-                                                                                            height * width)  # [B, 3, Ndepth, H*W]
+        rot_depth_xyz = rot_xyz.unsqueeze(2).repeat(1, 1, num_depth, 1) * depth_samples.view(batch, 1, num_depth, height * width)  # [B, 3, Ndepth, H*W]
         proj_xyz = rot_depth_xyz + trans.view(batch, 3, 1, 1)  # [B, 3, Ndepth, H*W]
         # avoid negative depth
         valid_mask = proj_xyz[:, 2:] > 1e-2

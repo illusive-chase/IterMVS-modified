@@ -30,7 +30,7 @@ class Evaluation(nn.Module):
         # correlation net for level 1,2,3
         self.corr_conv1 = nn.ModuleList([CorrNet(self.G), CorrNet(self.G), CorrNet(self.G)])
 
-    def forward(self, ref_feature, src_features, ref_proj, src_projs, depth_sample, inverse_depth_min=None, inverse_depth_max=None, view_weights=None):
+    def forward(self, ref_feature, src_features, inv_ref_proj, src_projs, depth_sample, inverse_depth_min=None, inverse_depth_max=None, view_weights=None):
         V = len(src_features["level2"])+1
 
         if view_weights == None:
@@ -42,11 +42,11 @@ class Evaluation(nn.Module):
             ref_feature = ref_feature["level3"]
             src_features = src_features["level3"]
 
-            ref_proj = ref_proj["level3"]
+            inv_ref_proj = inv_ref_proj["level3"]
             num_sample = depth_sample.size()[1]
 
             for src_feature, src_proj in zip(src_features, src_projs["level3"]):
-                warped_feature = differentiable_warping(src_feature, src_proj, ref_proj, depth_sample) #[B,C,N,H,W]
+                warped_feature = differentiable_warping(src_feature, src_proj, inv_ref_proj, depth_sample) #[B,C,N,H,W]
                 warped_feature = warped_feature.view(batch, self.G, dim//self.G, num_sample, height, width)
                 correlation = torch.mean(warped_feature*ref_feature.view(batch, self.G, dim//self.G, 1, height, width), dim=2, keepdim=False) #[B,G,N,H,W]
 
@@ -87,7 +87,7 @@ class Evaluation(nn.Module):
                 correlation_sum = 0
                 view_weight_sum = 1e-5
                 ref_feature_l = ref_feature[f"level{l}"]
-                ref_proj_l = ref_proj[f"level{l}"]
+                inv_ref_proj_l = inv_ref_proj[f"level{l}"]
                 depth_sample_l = depth_sample[f"level{l}"]
                 batch, num_sample, height, width = depth_sample_l.size()
                 dim = ref_feature_l.size(1)
@@ -99,7 +99,7 @@ class Evaluation(nn.Module):
 
                 i=0
                 for src_feature, src_proj in zip(src_features[f"level{l}"], src_projs[f"level{l}"]):
-                    warped_feature = differentiable_warping(src_feature, src_proj, ref_proj_l, depth_sample_l) #[B,C,N,H,W]
+                    warped_feature = differentiable_warping(src_feature, src_proj, inv_ref_proj_l, depth_sample_l) #[B,C,N,H,W]
                     warped_feature = warped_feature.view(batch, self.G, dim//self.G, num_sample, height, width)
                     correlation = torch.mean(warped_feature*ref_feature_l.view(batch, self.G, dim//self.G, 1, height, width), dim=2, keepdim=False) #[B,G,N,H,W]
                     view_weight = view_weights[:,i].view(batch,1,1,height,width) #[B,1,H,W]
@@ -250,7 +250,7 @@ class IterMVS(nn.Module):
         )
 
     
-    def forward(self, ref_feature, src_features, ref_proj, src_projs, depth_min, depth_max):
+    def forward(self, ref_feature, src_features, inv_ref_proj, src_projs, depth_min, depth_max):
         depths = {"combine":[],"probability":[], "initial":[]}
         confidences = []
         depths_upsampled = []
@@ -268,7 +268,7 @@ class IterMVS(nn.Module):
         inverse_depth_max = (1.0 / depth_max).view(batch,1,1,1)
 
         depth_samples = self.depth_initialization(inverse_depth_min, inverse_depth_max, height//2, width//2, device)
-        view_weights, corr, depth = self.evaluation(ref_feature, src_features, ref_proj, src_projs, depth_samples, inverse_depth_min, inverse_depth_max) # [B,2r+1,H,W]
+        view_weights, corr, depth = self.evaluation(ref_feature, src_features, inv_ref_proj, src_projs, depth_samples, inverse_depth_min, inverse_depth_max) # [B,2r+1,H,W]
         if not self.test:
             depths["initial"].append(depth)
 
@@ -292,7 +292,7 @@ class IterMVS(nn.Module):
                 normalized_sample = torch.clamp(normalized_sample, min=0, max=1)
                 samples[f"level{i}"] = depth_unnormalization(normalized_sample, inverse_depth_min, inverse_depth_max)
 
-            corr = self.evaluation(ref_feature, src_features, ref_proj, src_projs, samples, view_weights=view_weights.detach()) # [B,2r+1,H,W]
+            corr = self.evaluation(ref_feature, src_features, inv_ref_proj, src_projs, samples, view_weights=view_weights.detach()) # [B,2r+1,H,W]
 
             if not self.test:
                 hidden, normalized_depth, probability, confidence, confidence_0 = self.update(hidden, normalized_depth, corr, confidence_flag=True)
