@@ -191,6 +191,9 @@ class IncrementalIterMVSAgent:
         self._cache_pad_2xN_to_3xN[0:2, :] = coords
         return self._cache_pad_2xN_to_3xN
 
+    def open_stream(self):
+        return open(self.redirect, ('w' if self.redirect.startswith('/dev/') else 'a'))
+
     def reset(self):
         self.cache = {}
         self.pair_data = []
@@ -200,9 +203,27 @@ class IncrementalIterMVSAgent:
         estimation_pairs, fusion_pairs = compare_pairs(self.pair_data, pair_data)
         self.pair_data = pair_data
         self.dataset.update(estimation_pairs)
-        with open(self.redirect, ('w' if self.redirect.startswith('/dev/') else 'a')) as stream:
+        with self.open_stream() as stream:
             self.save_depth(stream)
             self.filter_depth(stream, fusion_pairs)
 
-
+    def extract_point_cloud(self):
+        xyzs = []
+        rgbs = []
+        for view in self.dataset.view_data.values():
+            if view.points.xyz[0] is None:
+                continue
+            assert ((not self.store_color) or (view.points.rgb[0] is not None))
+            xyzs.append(view.points.xyz[0])
+            if self.store_color:
+                rgbs.append(view.points.rgb[0])
+        with self.open_stream() as stream:
+            stream.write('Total {} points.\n'.format(sum([v.shape[0] for v in xyzs])))
+        if self.store_color:
+            return {
+                'xyz': np.concatenate(xyzs, axis=0),
+                'rgb': np.concatenate(rgbs, axis=0)
+            }
+        else:
+            return { 'xyz': np.concatenate(xyzs, axis=0) }
 
