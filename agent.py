@@ -21,13 +21,14 @@ class IncrementalIterMVSAgent:
         self.config = config
 
         self.redirect = config.get('redirect', '/dev/stdout')
-        self.batch_size = config.get('batch_size', 6)
+        self.batch_size = config.get('batch_size', 8)
         self.n_views = config.get('n_views', 5)
         self.img_wh = config.get('img_wh', (640, 480))
         self.loadckpt = config.get('loadckpt', './checkpoints/blendedmvs/model_000015.ckpt')
         self.iteration = config.get('iteration', 4)
         self.store_color = config.get('store_color', True)
         self.store_depth = config.get('store_depth', False)
+        self.store_feature = config.get('store_feature', False)
         self.store_confidence = config.get('store_confidence', False)
         self.photo_thres = config.get('photo_thres', 0.3)
         self.geo_pixel_thres = config.get('geo_pixel_thres', 1)
@@ -35,25 +36,42 @@ class IncrementalIterMVSAgent:
         self.geo_mask_thres = config.get('geo_mask_thres', 3)
         self.cropping_bbox = config.get('cropping_bbox', np.array([-np.inf, np.inf, -np.inf, np.inf, -np.inf, np.inf]))
 
+        assert not self.store_feature or self.store_confidence
+
         self._cache_mesh_grid_WxH = None
         self._cache_pad_3x3_to_4x4 = None
         self._cache_pad_2xN_to_3xN = None
         self._cache_pad_3xN_to_4xN = None
         
-        self.dataset = MVSDataset(folder=self.folder, n_views=self.n_views, img_wh=self.img_wh)
+        with self.open_stream() as stream:
+            stream.write("loading model {}\n".format(self.loadckpt))
+        self.model = Pipeline(iteration=self.iteration, test=True).to(self.device)
+        self.model.load_state_dict(torch.load(self.loadckpt))
+        self.model.eval()
+        self.dataset = MVSDataset(folder=self.folder, n_views=self.n_views, img_wh=self.img_wh, featuremetric=False)
 
     def save_depth(self, stream):
-        TestImgLoader = DataLoader(self.dataset, self.batch_size, shuffle=False, num_workers=0, drop_last=False)
-        model = Pipeline(iteration=self.iteration, test=True).to(self.device)
-        stream.write("loading model {}\n".format(self.loadckpt))
-        model.load_state_dict(torch.load(self.loadckpt))
-        model.eval()
-        
         with torch.no_grad():
+            if self.store_feature:
+                imgs, features = self.dataset.extract_feature()
+                if features != []:
+                    stream.write('Extracting...\n')
+                    extract_batch_size = self.batch_size * 2
+                    for i in range(0, imgs.shape[0], extract_batch_size):
+                        start_time = time.time()
+                        sample_cuda = torch.from_numpy(imgs[i:i+extract_batch_size]).to(self.device).unsqueeze(1).contiguous()
+                        outputs = nn.functional.interpolate(self.model.extract_feature(sample_cuda)['level1'][0], scale_factor=0.25, mode='bilinear', align_corners=False, recompute_scale_factor=True).cpu().numpy()
+                        stream.write('Iter {}/{}, time = {:.3f}\n'.format(i // extract_batch_size, (imgs.shape[0] + extract_batch_size - 1) // extract_batch_size, time.time() - start_time))
+                        for j in range(0, min(extract_batch_size, imgs.shape[0] - i)):
+                            features[i + j].append(outputs[j].transpose([1, 2, 0]))
+
+            TestImgLoader = DataLoader(self.dataset, self.batch_size, shuffle=False, num_workers=0, drop_last=False)
+        
+            stream.write('Inferring...\n')
             for batch_idx, sample in enumerate(TestImgLoader):
                 start_time = time.time()
                 sample_cuda = tocuda(sample, self.device)
-                outputs = tensor2numpy(model(sample_cuda["imgs"], sample_cuda["proj_matrices"], sample_cuda["depth_min"], sample_cuda["depth_max"]))
+                outputs = tensor2numpy(self.model(sample_cuda["imgs"], sample_cuda["proj_matrices"], sample_cuda["depth_min"], sample_cuda["depth_max"], sample_cuda["features"]))
                 del sample_cuda
                 stream.write('Iter {}/{}, time = {:.3f}\n'.format(batch_idx, len(TestImgLoader), time.time() - start_time))
 
@@ -162,6 +180,10 @@ class IncrementalIterMVSAgent:
                 point_data.rgb[0] = self.dataset.view_data[ref_view].LOD['level_0'][valid_points.cpu().numpy()][cropping_mask.cpu().numpy()]
             if self.store_confidence:
                 point_data.conf[0] = confidence[cropping_mask].cpu().numpy()
+            if self.store_feature:
+                feature_indices = (valid_points.nonzero(as_tuple=False)[cropping_mask, :] // 8).cpu().numpy()
+                point_data.feature[0] = self.dataset.view_data[ref_view].features[0][feature_indices[:, 0], feature_indices[:, 1]]
+            
 
     def _mesh_grid_WxH(self, as_xy1):
         if self._cache_mesh_grid_WxH is None:

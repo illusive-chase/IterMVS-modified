@@ -74,10 +74,21 @@ class Pipeline(nn.Module):
 
         self.feature_net = FeatureNet(test=test)
         self.iter_mvs = IterMVS(iteration, self.feature_dim[2], self.hidden_dim, test)
-        
-    def forward(self, imgs, proj_matrices, depth_min, depth_max):
 
-        features = self.feature_net(imgs['level_0'])
+    def extract_feature(self, imgs):
+        return self.feature_net(imgs)
+        
+    def forward(self, imgs, proj_matrices, depth_min, depth_max, features={}):
+
+        if len(features.keys()) < 3:
+            features = self.feature_net(imgs['level_0'])
+        else:
+            features = {
+                "level3": torch.unbind(features['level3'], dim=1),
+                "level2": torch.unbind(features['level2'], dim=1),
+                "level1": torch.unbind(features['level1'], dim=1)
+            }
+            
         ref_feature = {
                     "level3":features['level3'][0],
                     "level2":features['level2'][0],
