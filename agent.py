@@ -68,8 +68,7 @@ class IncrementalIterMVSAgent:
 
     def save_depth(self, stream, feature_pool=None):
         with torch.no_grad():
-            if feature_pool is not None:
-                self.dataset.precalculate_feature = True
+            self.dataset.precalculate_feature = feature_pool is not None
 
             TestImgLoader = DataLoader(self.dataset, self.batch_size, shuffle=False, num_workers=0, drop_last=False)
         
@@ -82,6 +81,8 @@ class IncrementalIterMVSAgent:
                         k: torch.from_numpy(v.reshape(*view_ids.size(), *v.shape[1:]))
                         for k, v in feature_pool.get_features(view_ids.reshape(-1)).items()
                     }
+                else:
+                    sample["features"] = {}
                 sample_cuda = tocuda(sample, self.device)
                 outputs = tensor2numpy(self.model(sample_cuda["imgs"], sample_cuda["proj_matrices"], sample_cuda["depth_min"], sample_cuda["depth_max"], sample_cuda["features"]))
                 del sample_cuda
