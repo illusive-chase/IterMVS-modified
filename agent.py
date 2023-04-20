@@ -48,28 +48,40 @@ class IncrementalIterMVSAgent:
         self.model = Pipeline(iteration=self.iteration, test=True).to(self.device)
         self.model.load_state_dict(torch.load(self.loadckpt))
         self.model.eval()
-        self.dataset = MVSDataset(folder=self.folder, n_views=self.n_views, img_wh=self.img_wh, featuremetric=False)
+        self.dataset = MVSDataset(folder=self.folder, n_views=self.n_views, img_wh=self.img_wh)
 
-    def save_depth(self, stream):
+    def extract_feature(self):
+        imgs = np.stack([view_data.LOD['level_0'] for view_data in self.dataset.view_data.values()]).transpose([0, 3, 1, 2])
+        inds = [vid for vid in self.dataset.view_data.keys()]
+        with self.open_stream() as stream:
+            stream.write('Extracting...\n')
+            extract_batch_size = self.batch_size * 2
+            for i in range(0, imgs.shape[0], extract_batch_size):
+                start_time = time.time()
+                sample_cuda = torch.from_numpy(imgs[i:i+extract_batch_size]).to(self.device).unsqueeze(1).contiguous()
+                outputs = tensor2numpy(self.model.extract_feature(sample_cuda))
+                # outputs = nn.functional.interpolate(self.model.extract_feature(sample_cuda)['level1'][0], scale_factor=0.25, mode='bilinear', align_corners=False, recompute_scale_factor=True).cpu().numpy()
+                stream.write('Iter {}/{}, time = {:.3f}\n'.format(i // extract_batch_size, (imgs.shape[0] + extract_batch_size - 1) // extract_batch_size, time.time() - start_time))
+                
+                for j in range(0, min(extract_batch_size, imgs.shape[0] - i)):
+                    yield inds[i + j], { k : v[0][j] for k, v in outputs.items() }
+
+    def save_depth(self, stream, feature_pool=None):
         with torch.no_grad():
-            if self.store_feature:
-                imgs, features = self.dataset.extract_feature()
-                if features != []:
-                    stream.write('Extracting...\n')
-                    extract_batch_size = self.batch_size * 2
-                    for i in range(0, imgs.shape[0], extract_batch_size):
-                        start_time = time.time()
-                        sample_cuda = torch.from_numpy(imgs[i:i+extract_batch_size]).to(self.device).unsqueeze(1).contiguous()
-                        outputs = nn.functional.interpolate(self.model.extract_feature(sample_cuda)['level1'][0], scale_factor=0.25, mode='bilinear', align_corners=False, recompute_scale_factor=True).cpu().numpy()
-                        stream.write('Iter {}/{}, time = {:.3f}\n'.format(i // extract_batch_size, (imgs.shape[0] + extract_batch_size - 1) // extract_batch_size, time.time() - start_time))
-                        for j in range(0, min(extract_batch_size, imgs.shape[0] - i)):
-                            features[i + j].append(outputs[j].transpose([1, 2, 0]))
+            if feature_pool is not None:
+                self.dataset.precalculate_feature = True
 
             TestImgLoader = DataLoader(self.dataset, self.batch_size, shuffle=False, num_workers=0, drop_last=False)
         
             stream.write('Inferring...\n')
             for batch_idx, sample in enumerate(TestImgLoader):
                 start_time = time.time()
+                if feature_pool is not None:
+                    view_ids = sample["view_ids"]
+                    sample["features"] = {
+                        k: torch.from_numpy(v.reshape(*view_ids.size(), *v.shape[1:]))
+                        for k, v in feature_pool.get_features(view_ids.reshape(-1)).items()
+                    }
                 sample_cuda = tocuda(sample, self.device)
                 outputs = tensor2numpy(self.model(sample_cuda["imgs"], sample_cuda["proj_matrices"], sample_cuda["depth_min"], sample_cuda["depth_max"], sample_cuda["features"]))
                 del sample_cuda
@@ -180,9 +192,9 @@ class IncrementalIterMVSAgent:
                 point_data.rgb[0] = self.dataset.view_data[ref_view].LOD['level_0'][valid_points.cpu().numpy()][cropping_mask.cpu().numpy()]
             if self.store_confidence:
                 point_data.conf[0] = confidence[cropping_mask].cpu().numpy()
-            if self.store_feature:
-                feature_indices = (valid_points.nonzero(as_tuple=False)[cropping_mask, :] // 8).cpu().numpy()
-                point_data.feature[0] = self.dataset.view_data[ref_view].features[0][feature_indices[:, 0], feature_indices[:, 1]]
+            # if self.store_feature:
+            #     feature_indices = (valid_points.nonzero(as_tuple=False)[cropping_mask, :] // 8).cpu().numpy()
+            #     point_data.feature[0] = self.dataset.view_data[ref_view].features[0][feature_indices[:, 0], feature_indices[:, 1]]
             
 
     def _mesh_grid_WxH(self, as_xy1):
@@ -221,12 +233,12 @@ class IncrementalIterMVSAgent:
         self.pair_data = []
         gc.collect()
 
-    def step(self, pair_data):
+    def step(self, pair_data, feature_pool=None):
         estimation_pairs, fusion_pairs = compare_pairs(self.pair_data, pair_data)
         self.pair_data = pair_data
         self.dataset.update(estimation_pairs)
         with self.open_stream() as stream:
-            self.save_depth(stream)
+            self.save_depth(stream, feature_pool=feature_pool)
             self.filter_depth(stream, fusion_pairs)
 
     def extract_point_cloud(self):

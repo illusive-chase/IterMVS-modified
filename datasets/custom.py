@@ -14,7 +14,6 @@ ViewData = namedtuple('ViewData', [
     'idx',
     'depth',
     'confidence',
-    'features',
     'LOD',
     'points'
 ])
@@ -22,14 +21,14 @@ PointsData = namedtuple('PointsData', ['rgb', 'feature', 'xyz', 'conf'])
 
 
 class MVSDataset(Dataset):
-    def __init__(self, folder, n_views=5, img_wh=(640,480), featuremetric=False):
+    def __init__(self, folder, n_views=5, img_wh=(640,480)):
         self.levels = 4
         self.folder = folder
         self.img_wh = img_wh
         self.metas = []
         self.n_views = n_views
         self.view_data = {}
-        self.featuremetric = featuremetric
+        self.precalculate_feature = False
 
     def load(self, view_id):
         if view_id not in self.view_data:
@@ -47,7 +46,6 @@ class MVSDataset(Dataset):
                 idx=view_id,
                 depth=[None],
                 confidence=[None],
-                features=[],
                 LOD=LOD,
                 points=PointsData(
                     rgb=[None],
@@ -56,13 +54,6 @@ class MVSDataset(Dataset):
                     conf=[None]
                 )
             )
-
-    def extract_feature(self):
-        features = [view_data.features for view_data in self.view_data.values() if view_data.features == []]
-        if features == []:
-            return [], []
-        imgs = np.stack([view_data.LOD['level_0'] for view_data in self.view_data.values() if view_data.features == []]).transpose([0, 3, 1, 2])
-        return imgs, features
 
     def update(self, estimation_pairs):
         self.metas = estimation_pairs
@@ -100,11 +91,7 @@ class MVSDataset(Dataset):
 
             view_data = self.view_data[vid]
 
-            if self.featuremetric:
-                features_1.append(view_data.features[1])
-                features_2.append(view_data.features[2])
-                features_3.append(view_data.features[3])
-            else:
+            if not self.precalculate_feature:
                 imgs_0.append(view_data.LOD['level_0'])
 
             intrinsics = view_data.intrinsics.copy()
@@ -137,12 +124,7 @@ class MVSDataset(Dataset):
                 depth_max = depth_max_
 
         imgs = {}
-        features = {}
-        if self.featuremetric:
-            features['level1'] = np.stack(features_1)
-            features['level2'] = np.stack(features_2)
-            features['level3'] = np.stack(features_3)
-        else:
+        if not self.precalculate_feature:
             # imgs: N*3*H0*W0, N is number of images
             imgs_0 = np.stack(imgs_0).transpose([0, 3, 1, 2])
             imgs['level_0'] = imgs_0
@@ -158,7 +140,7 @@ class MVSDataset(Dataset):
         proj['level_0']=proj_matrices_0
 
         return {"imgs": imgs,                   # N*3*H0*W0
-                "features": features,
+                "view_ids": np.stack(view_ids),
                 "proj_matrices": proj, # N*4*4
                 "depth_min": depth_min,         # scalar
                 "depth_max": depth_max,
