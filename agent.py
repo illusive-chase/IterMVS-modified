@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
 import time
-from .datasets import MVSDataset, read_pair_file
+from .datasets import MVSDataset, InteractiveMVSDataset, read_pair_file
 from .models import Pipeline
 from .utils import compare_pairs, tensor2numpy, tocuda
 import cv2
@@ -34,6 +34,7 @@ class IncrementalIterMVSAgent:
         self.geo_pixel_thres = config.get('geo_pixel_thres', 1)
         self.geo_depth_thres = config.get('geo_depth_thres', 0.01)
         self.geo_mask_thres = config.get('geo_mask_thres', 3)
+        self.interactive = config.get('interactive', False)
         self.cropping_bbox = config.get('cropping_bbox', np.array([-np.inf, np.inf, -np.inf, np.inf, -np.inf, np.inf]))
 
         assert not self.store_feature or self.store_confidence
@@ -48,7 +49,7 @@ class IncrementalIterMVSAgent:
         self.model = Pipeline(iteration=self.iteration, test=True).to(self.device)
         self.model.load_state_dict(torch.load(self.loadckpt))
         self.model.eval()
-        self.dataset = MVSDataset(folder=self.folder, n_views=self.n_views, img_wh=self.img_wh)
+        self.dataset = InteractiveMVSDataset(n_views=self.n_views, img_wh=self.img_wh) if self.interactive else MVSDataset(folder=self.folder, n_views=self.n_views, img_wh=self.img_wh)
 
     def extract_feature(self):
         imgs = np.stack([view_data.LOD['level_0'] for view_data in self.dataset.view_data.values()]).transpose([0, 3, 1, 2])
@@ -138,7 +139,7 @@ class IncrementalIterMVSAgent:
 
         return mask, depth_reprojected
 
-    def filter_depth(self, stream, fusion_pairs):
+    def filter_depth(self, stream, fusion_pairs, volume=None):
 
         bbox = torch.from_numpy(self.cropping_bbox).to(self.device)
         xyz_min = bbox[[0,2,4]]
@@ -180,19 +181,29 @@ class IncrementalIterMVSAgent:
                 valid_points.float().mean().item()
             ))
             x, y = self._mesh_grid_WxH(as_xy1=False)
-            x, y, depth, confidence = x[valid_points], y[valid_points], depth_est_averaged[valid_points], confidence[valid_points]
+            x, y, depth, conf = x[valid_points], y[valid_points], depth_est_averaged[valid_points], confidence[valid_points]
             
             view = self.get_cuda_view(ref_view)
             xyz_ref = view.intrinsics_inv @ (torch.cat((x.view(1, -1), y.view(1, -1), torch.ones_like(x).view(1, -1)), dim=0) * depth)
             xyz_world = (view.extrinsics_inv @ torch.cat((xyz_ref, torch.ones_like(x).float().view(1, -1)), dim=0))[:3].transpose(1, 0)
             cropping_mask = (xyz_world > xyz_min).all(1) & (xyz_world < xyz_max).all(1)
 
+            if volume is not None:
+                volume.fuse(
+                    xyz=xyz_world,
+                    extrinsic=view.extrinsics,
+                    intrinsic=view.intrinsics,
+                    depth=depth_est_averaged,
+                    confidence=confidence,
+                    valid_mask=valid_points,
+                )
+
             point_data = self.dataset.view_data[ref_view].points
             point_data.xyz[0] = xyz_world[cropping_mask].cpu().numpy()
             if self.store_color:
                 point_data.rgb[0] = self.dataset.view_data[ref_view].LOD['level_0'][valid_points.cpu().numpy()][cropping_mask.cpu().numpy()]
             if self.store_confidence:
-                point_data.conf[0] = confidence[cropping_mask].cpu().numpy()
+                point_data.conf[0] = conf[cropping_mask].cpu().numpy()
             # if self.store_feature:
             #     feature_indices = (valid_points.nonzero(as_tuple=False)[cropping_mask, :] // 8).cpu().numpy()
             #     point_data.feature[0] = self.dataset.view_data[ref_view].features[0][feature_indices[:, 0], feature_indices[:, 1]]
@@ -234,13 +245,20 @@ class IncrementalIterMVSAgent:
         self.pair_data = []
         gc.collect()
 
-    def step(self, pair_data, feature_pool=None):
+    def step(self, pair_data, **kwargs):
+        if self.interactive:
+            assert 'feature_pool' not in kwargs
+            feature_pool = None
+            volume = kwargs['volume']
+        else:
+            feature_pool = kwargs.get('feature_pool', None)
+            volume = None
         estimation_pairs, fusion_pairs = compare_pairs(self.pair_data, pair_data)
         self.pair_data = pair_data
         self.dataset.update(estimation_pairs)
         with self.open_stream() as stream:
             self.save_depth(stream, feature_pool=feature_pool)
-            self.filter_depth(stream, fusion_pairs)
+            self.filter_depth(stream, fusion_pairs, volume=volume)
 
     def extract_point_cloud(self):
         xyzs = []

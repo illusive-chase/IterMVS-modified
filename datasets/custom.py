@@ -3,6 +3,7 @@ from .data_io import read_cam_file, read_img
 import os
 import numpy as np
 from collections import namedtuple
+import cv2
 
 ViewData = namedtuple('ViewData', [
     'extrinsics',
@@ -146,3 +147,46 @@ class MVSDataset(Dataset):
                 "depth_max": depth_max,
                 "view_id": ref_view
                 }  
+
+class InteractiveMVSDataset(MVSDataset):
+    def __init__(self, n_views=5, img_wh=(640,480)):
+        super().__init__(None, n_views, img_wh)
+
+    def load(self, view_id, intrinsics, extrinsics, depth_range, image):
+        depth_min, depth_max = depth_range
+        np_img = (2 * (image / 255.) - 1).astype(np.float32)
+        h, w = np_img.shape[:2]
+        LOD = {
+            "level_3": cv2.resize(np_img, (w//8, h//8), interpolation=cv2.INTER_LINEAR),
+            "level_2": cv2.resize(np_img, (w//4, h//4), interpolation=cv2.INTER_LINEAR),
+            "level_1": cv2.resize(np_img, (w//2, h//2), interpolation=cv2.INTER_LINEAR),
+            "level_0": np_img
+        }
+        intrinsics = intrinsics.copy()
+        intrinsics[0] *= self.img_wh[0] / w
+        intrinsics[1] *= self.img_wh[1] / h
+        self.view_data[view_id] = ViewData(
+            extrinsics=extrinsics,
+            intrinsics=intrinsics,
+            inv_extrinsics=np.linalg.inv(extrinsics),
+            inv_intrinsics=np.linalg.inv(intrinsics),
+            depth_max=depth_max,
+            depth_min=depth_min,
+            idx=view_id,
+            depth=[None],
+            confidence=[None],
+            LOD=LOD,
+            points=PointsData(
+                rgb=[None],
+                xyz=[None],
+                feature=[None],
+                conf=[None]
+            )
+        )
+
+    def update(self, estimation_pairs):
+        self.metas = estimation_pairs
+        view_ids = set()
+        for ref_view, src_views in self.metas:
+            view_ids = view_ids | set([ref_view] + src_views[:self.n_views-1])
+        assert len(view_ids - set(self.view_data.keys())) == 0
