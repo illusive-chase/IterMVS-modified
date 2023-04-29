@@ -34,7 +34,7 @@ class IncrementalIterMVSAgent:
         self.geo_pixel_thres = config.get('geo_pixel_thres', 1)
         self.geo_depth_thres = config.get('geo_depth_thres', 0.01)
         self.geo_mask_thres = config.get('geo_mask_thres', 3)
-        self.cropping_bbox = config.get('cropping_bbox', np.array([-np.inf, np.inf, -np.inf, np.inf, -np.inf, np.inf]))
+        self.cropping_aabb = config.get('cropping_aabb', np.array([-np.inf, np.inf, -np.inf, np.inf, -np.inf, np.inf]))
 
         assert not self.store_feature or self.store_confidence
 
@@ -140,9 +140,9 @@ class IncrementalIterMVSAgent:
 
     def filter_depth(self, stream, fusion_pairs):
 
-        bbox = torch.from_numpy(self.cropping_bbox).to(self.device)
-        xyz_min = bbox[[0,2,4]]
-        xyz_max = bbox[[1,3,5]]
+        aabb = torch.from_numpy(self.cropping_aabb).to(self.device)
+        xyz_min = aabb[[0,2,4]]
+        xyz_max = aabb[[1,3,5]]
 
         for ref_view, src_views in fusion_pairs:
             confidence = torch.from_numpy(self.dataset.view_data[ref_view].confidence[0]).to(self.device)
