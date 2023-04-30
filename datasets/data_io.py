@@ -90,6 +90,18 @@ def read_cam_file(filename):
 
     return intrinsics, extrinsics, depth_min, depth_max
 
+def write_cam_file(filename, intrinsics, extrinsics, depth_min, depth_max):
+    with open(filename, 'w') as f:
+        f.write('extrinsic\n')
+        for i in range(4):
+            line = ' '.join([str(extrinsics[i, j]) for j in range(4)])
+            f.write(line + '\n')
+        f.write('\nintrinsic\n')
+        for i in range(3):
+            line = ' '.join([str(intrinsics[i, j]) for j in range(3)])
+            f.write(line + '\n')
+        f.write('\n{} {}\n'.format(depth_min, depth_max))
+
 def read_img(filename, h, w):
     img = Image.open(filename)
     # scale 0~255 to -1~1
