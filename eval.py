@@ -451,7 +451,7 @@ if __name__ == '__main__':
         device = torch.device('cuda:{}'.format(args.cuda))
     else:
         device = torch.device('cpu')
-    with open(args.redirect, ('w' if redirect.startswith('/dev/') else 'a')) as stream:
+    with open(args.redirect, ('w' if args.redirect.startswith('/dev/') else 'a')) as stream:
         stream.write('argv: ' + str(sys.argv[1:]) + '\n')
         utils.print_args(args, stream)
     main(
