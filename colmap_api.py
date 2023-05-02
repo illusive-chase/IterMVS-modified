@@ -241,7 +241,7 @@ def quaternion_to_rotation_matrix(qvec: List[float]) -> np.ndarray:
          1 - 2 * qvec[1] ** 2 - 2 * qvec[2] ** 2]])
 
 
-def main(input_folder, num_src_images, theta0, sigma1, sigma2):
+def main(input_folder, num_src_images, theta0, sigma1, sigma2, sort_by_name):
     cameras, images, points3d = read_model(os.path.join(input_folder, "sparse"), ".bin")
     num_images = len(images)
 
@@ -334,11 +334,20 @@ def main(input_folder, num_src_images, theta0, sigma1, sigma2):
         sorted_score = np.argsort(score[i])[::-1]
         view_sel.append([(k, score[i, k]) for k in sorted_score[:num_src_images]])
 
+    if sort_by_name:
+        remap = []
+        for i in range(num_images):
+            remap.append((images[i].name, i))
+        remap.sort(key=(lambda x:x[0]))
+        remap = { x[1]: i for i, x in enumerate(remap) }
+    else:
+        remap = {}
+
     # write
     cam_dir = os.path.join(input_folder, "cams_1")
     os.makedirs(cam_dir, exist_ok=True)
     for i in range(num_images):
-        with open(os.path.join(cam_dir, "%08d_cam.txt" % i), "w") as f:
+        with open(os.path.join(cam_dir, "%08d_cam.txt" % remap.get(i, i)), "w") as f:
             f.write("extrinsic\n")
             for j in range(4):
                 for k in range(4):
@@ -354,26 +363,25 @@ def main(input_folder, num_src_images, theta0, sigma1, sigma2):
     with open(os.path.join(input_folder, "pair.txt"), "w") as f:
         f.write("%d\n" % len(images))
         for i, sorted_score in enumerate(view_sel):
-            f.write("%d\n%d " % (i, len(sorted_score)))
+            f.write("%d\n%d " % (remap.get(i, i), len(sorted_score)))
             for image_id, s in sorted_score:
-                f.write("%d %f " % (image_id, s))
+                f.write("%d %f " % (remap.get(image_id, image_id), s))
             f.write("\n")
 
-    for idx, image in enumerate(images):
-        target_name = "%08d.jpg" % idx
-        if image.name == target_name:
-            continue
-        shutil.copyfile(os.path.join(input_folder, "images", image.name), os.path.join(input_folder, "images", target_name))
+    for i in range(len(images)):
+        target_name = "%08d.jpg" % remap.get(i, i)
+        shutil.copyfile(os.path.join(input_folder, "images", images[i].name), os.path.join(input_folder, "images", target_name))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert colmap results into input for PatchmatchNet")
 
-    parser.add_argument("--input_folder", type=str, required=True, help="Project input dir.")
-    parser.add_argument("--num_src_images", type=int, default=5, help="Related images")
-    parser.add_argument("--theta0", type=float, default=5)
-    parser.add_argument("--sigma1", type=float, default=1)
-    parser.add_argument("--sigma2", type=float, default=10)
+    parser.add_argument('--input', '-i', type=str, required=True)
+    parser.add_argument('--n_views', type=int, default=5)
+    parser.add_argument('--sort_by_name', '-sort', action='store_true', default=False)
+    parser.add_argument('--theta0', type=float, default=5)
+    parser.add_argument('--sigma1', type=float, default=1)
+    parser.add_argument('--sigma2', type=float, default=10)
     args = parser.parse_args()
-    main(args.input_folder, args.num_src_images, args.theta0, args.sigma1, args.sigma2)
+    main(args.input, args.n_views - 1, args.theta0, args.sigma1, args.sigma2, args.sort_by_name)
 
