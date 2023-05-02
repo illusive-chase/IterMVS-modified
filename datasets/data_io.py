@@ -105,14 +105,14 @@ def write_cam_file(filename, intrinsics, extrinsics, depth_min, depth_max):
 def read_img(filename, h, w):
     img = Image.open(filename)
     # scale 0~255 to -1~1
-    np_img = 2*np.asarray(img, dtype=np.float32) / 255. - 1
+    np_img = 2*np.asarray(img, dtype=np.float32)[:, :, :3] / 255. - 1
     original_h, original_w, _ = np_img.shape
     np_img = cv2.resize(np_img, (w, h), interpolation=cv2.INTER_LINEAR)
     
     np_img_ms = {
-        "level_3": cv2.resize(np_img, (w//8, h//8), interpolation=cv2.INTER_LINEAR),
-        "level_2": cv2.resize(np_img, (w//4, h//4), interpolation=cv2.INTER_LINEAR),
-        "level_1": cv2.resize(np_img, (w//2, h//2), interpolation=cv2.INTER_LINEAR),
+        # "level_3": cv2.resize(np_img, (w//8, h//8), interpolation=cv2.INTER_LINEAR),
+        # "level_2": cv2.resize(np_img, (w//4, h//4), interpolation=cv2.INTER_LINEAR),
+        # "level_1": cv2.resize(np_img, (w//2, h//2), interpolation=cv2.INTER_LINEAR),
         "level_0": np_img
     }
     return np_img_ms, original_h, original_w

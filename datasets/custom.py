@@ -33,7 +33,11 @@ class MVSDataset(Dataset):
     def load(self, view_id):
         if view_id not in self.view_data:
             intrinsics, extrinsics, depth_min, depth_max = read_cam_file(os.path.join(self.folder, 'cams_1', '{:08d}_cam.txt'.format(view_id)))
-            LOD, original_h, original_w = read_img(os.path.join(self.folder, 'images', '{:08d}.jpg'.format(view_id)), self.img_wh[1], self.img_wh[0])
+            for img_fmt in ['jpg', 'png']:
+                img_path = os.path.join(self.folder, 'images', '{:08d}.{}'.format(view_id, img_fmt))
+                if os.path.exists(img_path):
+                    break
+            LOD, original_h, original_w = read_img(img_path, self.img_wh[1], self.img_wh[0])
             intrinsics[0] *= self.img_wh[0]/original_w
             intrinsics[1] *= self.img_wh[1]/original_h
             self.view_data[view_id] = ViewData(
