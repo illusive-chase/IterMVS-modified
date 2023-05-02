@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .module import *
 from .itermvs import *
+import gc
 
 class FeatureNet(nn.Module):
     def __init__(self, test=False):
@@ -66,19 +67,23 @@ class FeatureNet(nn.Module):
         return feas
 
 class Pipeline(nn.Module):
-    def __init__(self,  iteration=4, test=False):
+    def __init__(self,  iteration=4, test=False, gc_collect=False):
         super(Pipeline, self).__init__()
         self.feature_dim = [8,16,32,48]
         self.hidden_dim = 32
         self.test = test
+        self.gc_collect = gc_collect
 
         self.feature_net = FeatureNet(test=test)
-        self.iter_mvs = IterMVS(iteration, self.feature_dim[2], self.hidden_dim, test)
+        self.iter_mvs = IterMVS(iteration, self.feature_dim[2], self.hidden_dim, test=test, gc_collect=gc_collect)
 
     def extract_feature(self, imgs):
         return self.feature_net(imgs)
         
     def forward(self, imgs, proj_matrices, depth_min, depth_max, features={}):
+        if self.gc_collect:
+            gc.collect()
+            torch.cuda.empty_cache()
 
         if len(features.keys()) < 3:
             features = self.feature_net(imgs['level_0'])
@@ -88,7 +93,7 @@ class Pipeline(nn.Module):
                 "level2": torch.unbind(features['level2'], dim=1),
                 "level1": torch.unbind(features['level1'], dim=1)
             }
-            
+
         ref_feature = {
                     "level3":features['level3'][0],
                     "level2":features['level2'][0],
@@ -116,6 +121,10 @@ class Pipeline(nn.Module):
         
         depth_min = depth_min.float()
         depth_max = depth_max.float()
+
+        if self.gc_collect:
+            gc.collect()
+            torch.cuda.empty_cache()
 
         if not self.test:
             depths, depths_upsampled, confidences, confidence_upsampled = self.iter_mvs(ref_feature, src_features, inv_ref_proj, src_projs, depth_min, depth_max)

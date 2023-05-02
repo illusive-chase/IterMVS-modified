@@ -35,6 +35,7 @@ class IncrementalIterMVSAgent:
         self.geo_depth_thres = config.get('geo_depth_thres', 0.01)
         self.geo_mask_thres = config.get('geo_mask_thres', 3)
         self.cropping_aabb = config.get('cropping_aabb', np.array([-np.inf, np.inf, -np.inf, np.inf, -np.inf, np.inf]))
+        self.minimal_memory = config.get('minimal_memory', False)
 
         assert not self.store_feature or self.store_confidence
 
@@ -45,7 +46,7 @@ class IncrementalIterMVSAgent:
         
         with self.open_stream() as stream:
             stream.write("loading model {}\n".format(self.loadckpt))
-        self.model = Pipeline(iteration=self.iteration, test=True).to(self.device)
+        self.model = Pipeline(iteration=self.iteration, test=True, gc_collect=self.minimal_memory).to(self.device)
         self.model.load_state_dict(torch.load(self.loadckpt))
         self.model.eval()
         self.dataset = MVSDataset(folder=self.folder, n_views=self.n_views, img_wh=self.img_wh)

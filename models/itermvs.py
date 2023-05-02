@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .module import *
+import gc
 
 class DepthInitialization(nn.Module):
     def __init__(self, num_sample):
@@ -221,7 +222,7 @@ class Update(nn.Module):
 
 
 class IterMVS(nn.Module):
-    def __init__(self, iteration, feature_dim, hidden_dim, test=False):
+    def __init__(self, iteration, feature_dim, hidden_dim, test=False, gc_collect=False):
         super(IterMVS, self).__init__()
         self.iteration = iteration
         self.hidden_dim = hidden_dim
@@ -236,6 +237,7 @@ class IterMVS(nn.Module):
 
         self.num_sample = 32
         self.test = test
+        self.gc_collect = gc_collect
 
         self.depth_initialization = DepthInitialization(self.num_sample)
 
@@ -313,6 +315,10 @@ class IterMVS(nn.Module):
                 confidence = confidence.detach()
                 normalized_depth = normalized_depth.detach()
             else:
+                if self.gc_collect:
+                    gc.collect()
+                    torch.cuda.empty_cache()
+                
                 if iter<self.iteration-1:
                     hidden, normalized_depth, _, _, _ = self.update(hidden, normalized_depth, corr, confidence_flag=False)
                 else:

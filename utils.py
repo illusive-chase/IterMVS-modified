@@ -44,6 +44,16 @@ def make_recursive_func(func):
 
 
 @make_recursive_func
+def get_shape(vars):
+    if isinstance(vars, torch.Tensor):
+        return tuple(vars.size())
+    elif isinstance(vars, str):
+        return (0,)
+    else:
+        raise NotImplementedError("invalid input type {} for get_size".format(type(vars)))
+
+
+@make_recursive_func
 def tensor2numpy(vars):
     if isinstance(vars, np.ndarray):
         return vars
