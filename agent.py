@@ -30,6 +30,7 @@ class IncrementalIterMVSAgent:
         self.store_depth = config.get('store_depth', False)
         self.store_feature = config.get('store_feature', False)
         self.store_confidence = config.get('store_confidence', False)
+        self.store_mask = config.get('store_mask', False)
         self.photo_thres = config.get('photo_thres', 0.3)
         self.geo_pixel_thres = config.get('geo_pixel_thres', 1)
         self.geo_depth_thres = config.get('geo_depth_thres', 0.01)
@@ -196,6 +197,11 @@ class IncrementalIterMVSAgent:
                 point_data.conf[0] = confidence[cropping_mask].cpu().numpy()
             if self.store_depth:
                 point_data.depth[0] = depth[cropping_mask].cpu().numpy()
+            if self.store_mask:
+                indices = valid_points.nonzero(as_tuple=False)[cropping_mask, :]
+                mask = torch.zeros((self.img_wh[1], self.img_wh[0]), device=self.device, dtype=torch.bool)
+                mask[indices[:, 0], indices[:, 1]] = True
+                point_data.mask[0] = mask.cpu().numpy()
             # if self.store_feature:
             #     feature_indices = (valid_points.nonzero(as_tuple=False)[cropping_mask, :] // 8).cpu().numpy()
             #     point_data.feature[0] = self.dataset.view_data[ref_view].features[0][feature_indices[:, 0], feature_indices[:, 1]]
