@@ -194,6 +194,8 @@ class IncrementalIterMVSAgent:
                 point_data.rgb[0] = self.dataset.view_data[ref_view].LOD['level_0'][valid_points.cpu().numpy()][cropping_mask.cpu().numpy()]
             if self.store_confidence:
                 point_data.conf[0] = confidence[cropping_mask].cpu().numpy()
+            if self.store_depth:
+                point_data.depth[0] = depth[cropping_mask].cpu().numpy()
             # if self.store_feature:
             #     feature_indices = (valid_points.nonzero(as_tuple=False)[cropping_mask, :] // 8).cpu().numpy()
             #     point_data.feature[0] = self.dataset.view_data[ref_view].features[0][feature_indices[:, 0], feature_indices[:, 1]]

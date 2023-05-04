@@ -17,7 +17,7 @@ ViewData = namedtuple('ViewData', [
     'LOD',
     'points'
 ])
-PointsData = namedtuple('PointsData', ['rgb', 'feature', 'xyz', 'conf'])
+PointsData = namedtuple('PointsData', ['rgb', 'feature', 'xyz', 'conf', 'depth'])
 
 
 class MVSDataset(Dataset):
@@ -55,7 +55,8 @@ class MVSDataset(Dataset):
                     rgb=[None],
                     xyz=[None],
                     feature=[None],
-                    conf=[None]
+                    conf=[None],
+                    depth=[None]
                 )
             )
 
