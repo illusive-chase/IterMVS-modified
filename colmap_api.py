@@ -370,6 +370,8 @@ def main(input_folder, num_src_images, theta0, sigma1, sigma2, sort_by_name):
 
     for i in range(len(images)):
         target_name = "%08d.jpg" % remap.get(i, i)
+        if images[i].name == target_name:
+            continue
         shutil.copyfile(os.path.join(input_folder, "images", images[i].name), os.path.join(input_folder, "images", target_name))
 
 
