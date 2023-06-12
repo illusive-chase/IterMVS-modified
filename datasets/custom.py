@@ -1,6 +1,7 @@
 from torch.utils.data import Dataset
 from .data_io import read_cam_file, read_img
 import os
+import cv2
 import numpy as np
 from collections import namedtuple
 
@@ -12,6 +13,7 @@ ViewData = namedtuple('ViewData', [
     'depth_max',
     'depth_min',
     'idx',
+    'prior',
     'depth',
     'confidence',
     'LOD',
@@ -21,7 +23,7 @@ PointsData = namedtuple('PointsData', ['rgb', 'feature', 'xyz', 'conf', 'depth',
 
 
 class MVSDataset(Dataset):
-    def __init__(self, folder, n_views=5, img_wh=(640,480)):
+    def __init__(self, folder, n_views=5, img_wh=(640,480), use_prior=False):
         self.levels = 4
         self.folder = folder
         self.img_wh = img_wh
@@ -29,6 +31,7 @@ class MVSDataset(Dataset):
         self.n_views = n_views
         self.view_data = {}
         self.precalculate_feature = False
+        self.use_prior = use_prior
 
     def load(self, view_id):
         if view_id not in self.view_data:
@@ -40,6 +43,12 @@ class MVSDataset(Dataset):
             LOD, original_h, original_w = read_img(img_path, self.img_wh[1], self.img_wh[0])
             intrinsics[0] *= self.img_wh[0]/original_w
             intrinsics[1] *= self.img_wh[1]/original_h
+            if self.use_prior:
+                prior = np.load(os.path.join(self.folder, 'priors', '{:08d}.npy'.format(view_id)))
+                assert prior.shape == (original_h, original_w, 1), prior.shape
+                prior = cv2.resize(prior[:, :, 0], (self.img_wh[1] // 8, self.img_wh[0] // 8), cv2.INTER_CUBIC)
+            else:
+                prior = None
             self.view_data[view_id] = ViewData(
                 extrinsics=extrinsics,
                 intrinsics=intrinsics,
@@ -48,6 +57,7 @@ class MVSDataset(Dataset):
                 depth_max=depth_max,
                 depth_min=depth_min,
                 idx=view_id,
+                prior=prior,
                 depth=[None],
                 confidence=[None],
                 LOD=LOD,
@@ -145,10 +155,16 @@ class MVSDataset(Dataset):
         proj['level_1']=proj_matrices_1
         proj['level_0']=proj_matrices_0
 
-        return {"imgs": imgs,                   # N*3*H0*W0
-                "view_ids": np.stack(view_ids),
-                "proj_matrices": proj, # N*4*4
-                "depth_min": depth_min,         # scalar
-                "depth_max": depth_max,
-                "view_id": ref_view
-                }  
+        result = {
+            "imgs": imgs,                   # N*3*H0*W0
+            "view_id": ref_view,
+            "view_ids": np.stack(view_ids),
+            "proj_matrices": proj, # N*4*4
+            "depth_min": depth_min,         # scalar
+            "depth_max": depth_max
+        }
+
+        if self.use_prior:
+            result["depth_prior"] = self.view_data[ref_view].prior
+
+        return result

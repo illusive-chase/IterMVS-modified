@@ -80,7 +80,7 @@ class Pipeline(nn.Module):
     def extract_feature(self, imgs):
         return self.feature_net(imgs)
         
-    def forward(self, imgs, proj_matrices, depth_min, depth_max, features={}):
+    def forward(self, imgs, proj_matrices, depth_min, depth_max, features={}, depth_prior=None):
         if self.gc_collect:
             gc.collect()
             torch.cuda.empty_cache()
@@ -127,7 +127,7 @@ class Pipeline(nn.Module):
             torch.cuda.empty_cache()
 
         if not self.test:
-            depths, depths_upsampled, confidences, confidence_upsampled = self.iter_mvs(ref_feature, src_features, inv_ref_proj, src_projs, depth_min, depth_max)
+            depths, depths_upsampled, confidences, confidence_upsampled = self.iter_mvs(ref_feature, src_features, inv_ref_proj, src_projs, depth_min, depth_max, depth_prior=depth_prior)
 
             return {
                         "depths": depths, 
@@ -136,7 +136,7 @@ class Pipeline(nn.Module):
                         "confidence_upsampled": confidence_upsampled,
                     }
         else:
-            depth, depths_upsampled, confidence, confidence_upsampled = self.iter_mvs(ref_feature, src_features, inv_ref_proj, src_projs, depth_min, depth_max)
+            depth, depths_upsampled, confidence, confidence_upsampled = self.iter_mvs(ref_feature, src_features, inv_ref_proj, src_projs, depth_min, depth_max, depth_prior=depth_prior)
 
             return {
                         "depths_upsampled": depths_upsampled,

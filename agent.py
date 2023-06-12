@@ -37,6 +37,7 @@ class IncrementalIterMVSAgent:
         self.geo_mask_thres = config.get('geo_mask_thres', 3)
         self.cropping_aabb = config.get('cropping_aabb', np.array([-np.inf, np.inf, -np.inf, np.inf, -np.inf, np.inf]))
         self.minimal_memory = config.get('minimal_memory', False)
+        self.use_prior = config.get('use_prior', False)
 
         assert not self.store_feature or self.store_confidence
 
@@ -50,7 +51,7 @@ class IncrementalIterMVSAgent:
         self.model = Pipeline(iteration=self.iteration, test=True, gc_collect=self.minimal_memory).to(self.device)
         self.model.load_state_dict(torch.load(self.loadckpt))
         self.model.eval()
-        self.dataset = MVSDataset(folder=self.folder, n_views=self.n_views, img_wh=self.img_wh)
+        self.dataset = MVSDataset(folder=self.folder, n_views=self.n_views, img_wh=self.img_wh, use_prior=self.use_prior)
 
     def extract_feature(self):
         imgs = np.stack([view_data.LOD['level_0'] for view_data in self.dataset.view_data.values()]).transpose([0, 3, 1, 2])
@@ -86,7 +87,14 @@ class IncrementalIterMVSAgent:
                 else:
                     sample["features"] = {}
                 sample_cuda = tocuda(sample, self.device)
-                outputs = tensor2numpy(self.model(sample_cuda["imgs"], sample_cuda["proj_matrices"], sample_cuda["depth_min"], sample_cuda["depth_max"], sample_cuda["features"]))
+                outputs = tensor2numpy(self.model(
+                    sample_cuda["imgs"],
+                    sample_cuda["proj_matrices"],
+                    sample_cuda["depth_min"],
+                    sample_cuda["depth_max"],
+                    sample_cuda["features"],
+                    depth_prior=sample_cuda.get("depth_prior", None)
+                ))
                 del sample_cuda
                 stream.write('Iter {}/{}, time = {:.3f}\n'.format(batch_idx, len(TestImgLoader), time.time() - start_time))
 

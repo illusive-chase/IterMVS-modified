@@ -9,13 +9,21 @@ class DepthInitialization(nn.Module):
         super(DepthInitialization, self).__init__()
         self.num_sample = num_sample
     
-    def forward(self, inverse_depth_min, inverse_depth_max, height, width, device):
-        batch = inverse_depth_min.size()[0]        
-        index = torch.arange(0, self.num_sample, 1, device=device).view(1, self.num_sample, 1, 1).float()
-        normalized_sample = index.repeat(batch, 1, height, width) / (self.num_sample-1)
-        depth_sample = inverse_depth_max + normalized_sample * (inverse_depth_min - inverse_depth_max)
+    def forward(self, inverse_depth_min, inverse_depth_max, height, width, device, depth_prior):
+        batch = inverse_depth_min.size()[0]
 
-        depth_sample = 1.0 / depth_sample
+        if depth_prior is None:
+            index = torch.arange(0, self.num_sample, 1, device=device).view(1, self.num_sample, 1, 1).float()
+            normalized_sample = index.repeat(batch, 1, height, width) / (self.num_sample-1)
+            depth_sample = inverse_depth_max + normalized_sample * (inverse_depth_min - inverse_depth_max)
+
+            depth_sample = 1.0 / depth_sample
+        else:
+            index = torch.arange(0, self.num_sample - 1, 1, device=device).view(1, self.num_sample - 1, 1, 1).float()
+            normalized_sample = index.repeat(batch, 1, height, width) / (self.num_sample - 2)
+            depth_sample = inverse_depth_max + normalized_sample * (inverse_depth_min - inverse_depth_max)
+
+            depth_sample = 1.0 / torch.cat((depth_sample, depth_prior.view(batch, 1, height, width)), dim=1)
 
         return depth_sample
 
@@ -252,7 +260,7 @@ class IterMVS(nn.Module):
         )
 
     
-    def forward(self, ref_feature, src_features, inv_ref_proj, src_projs, depth_min, depth_max):
+    def forward(self, ref_feature, src_features, inv_ref_proj, src_projs, depth_min, depth_max, depth_prior):
         depths = {"combine":[],"probability":[], "initial":[]}
         confidences = []
         depths_upsampled = []
@@ -269,7 +277,7 @@ class IterMVS(nn.Module):
         inverse_depth_min = (1.0 / depth_min).view(batch,1,1,1)
         inverse_depth_max = (1.0 / depth_max).view(batch,1,1,1)
 
-        depth_samples = self.depth_initialization(inverse_depth_min, inverse_depth_max, height//2, width//2, device)
+        depth_samples = self.depth_initialization(inverse_depth_min, inverse_depth_max, height//2, width//2, device, depth_prior=depth_prior)
         view_weights, corr, depth = self.evaluation(ref_feature, src_features, inv_ref_proj, src_projs, depth_samples, inverse_depth_min, inverse_depth_max) # [B,2r+1,H,W]
         if not self.test:
             depths["initial"].append(depth)
