@@ -24,7 +24,7 @@ class IncrementalIterMVSAgent:
         self.batch_size = config.get('batch_size', 8)
         self.n_views = config.get('n_views', 5)
         self.img_wh = config.get('img_wh', (640, 480))
-        self.loadckpt = config.get('loadckpt', './checkpoints/blendedmvs/model_000015.ckpt')
+        self.loadckpt = config.get('loadckpt', os.path.join(os.path.dirname(__file__), 'checkpoints/blendedmvs/model_000015.ckpt'))
         self.iteration = config.get('iteration', 4)
         self.store_color = config.get('store_color', True)
         self.store_depth = config.get('store_depth', False)

@@ -5,9 +5,9 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
 import time
-from datasets import MVSDataset, read_pair_file
-from models import Pipeline
-import utils
+from .datasets import MVSDataset, read_pair_file
+from .models import Pipeline
+from . import utils
 import sys
 import cv2
 
@@ -30,6 +30,9 @@ def main(workdir,
          redirect,
          base_dataset=None
     ):
+
+    if loadckpt is None:
+        loadckpt = os.path.join(os.path.dirname(__file__), 'checkpoints/blendedmvs/model_000015.ckpt')
 
     if base_dataset is None:
         test_dataset = MVSDataset(workdir, n_views, img_wh)
@@ -438,7 +441,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=8, help='testing batch size')
     parser.add_argument('--n_views', type=int, default=5, help='num of view')
     parser.add_argument('--img_wh', nargs='+', type=int, default=[640, 480], help='height and width of the image')
-    parser.add_argument('--loadckpt', '-l', default='./checkpoints/blendedmvs/model_000015.ckpt', help='load a specific checkpoint')
+    parser.add_argument('--loadckpt', '-l', default=None, help='load a specific checkpoint')
     parser.add_argument('--iteration', type=int, default=4, help='num of iteration of GRU')
     parser.add_argument('--geo_pixel_thres', '-gp', type=float, default=10, help='pixel threshold for geometric consistency filtering')
     parser.add_argument('--geo_depth_thres', '-gd', type=float, default=0.1, help='depth threshold for geometric consistency filtering')
