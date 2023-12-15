@@ -80,8 +80,10 @@ def differentiable_warping(src_fea, src_proj, inv_ref_proj, depth_samples, retur
 
         rot = proj[:, :3, :3]  # [B,3,3]
         trans = proj[:, :3, 3:4]  # [B,3,1]
-        y, x = torch.meshgrid([torch.arange(0, height, dtype=torch.float32, device=depth_samples.device),
-                            torch.arange(0, width, dtype=torch.float32, device=depth_samples.device)])
+        y, x = torch.meshgrid([
+            torch.arange(0, height, dtype=torch.float32, device=depth_samples.device),
+            torch.arange(0, width, dtype=torch.float32, device=depth_samples.device)
+        ], indexing='ij')
         y, x = y.contiguous(), x.contiguous()
         y, x = y.view(height * width), x.view(height * width)
         y = y*(height1/height)
